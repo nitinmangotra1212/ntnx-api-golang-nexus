@@ -1,0 +1,696 @@
+openapi: 3.0.3
+info:
+  title: Mock REST API
+  description: Mock REST API for testing and development
+  version: 1.0.0
+  contact:
+    name: Nutanix API Team
+    email: api-team@nutanix.com
+
+servers:
+  - url: http://localhost:9009
+    description: Local development server
+  - url: http://localhost:9009/mock/v4/config
+    description: Mock service endpoint
+
+tags:
+  - name: Cat
+    description: Cat management operations
+
+paths:
+  /cats:
+    get:
+      tags:
+        - Cat
+      summary: List all cats
+      description: Returns a paginated list of cats with optional filtering and sorting
+      operationId: listCats
+      parameters:
+        - name: delay
+          in: query
+          description: Artificial delay in milliseconds for testing
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+            example: 1000
+        - name: size
+          in: query
+          description: Response size (small, medium, large, huge)
+          required: false
+          schema:
+            type: string
+            enum: [small, medium, large, huge]
+            example: small
+        - name: version
+          in: query
+          description: API version
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 1
+        - name: $page
+          in: query
+          description: Page number for pagination
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: $limit
+          in: query
+          description: Number of items per page
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            default: 10
+        - name: $filter
+          in: query
+          description: OData-style filter expression
+          required: false
+          schema:
+            type: string
+            example: "catType eq 'TYPE1'"
+        - name: $orderby
+          in: query
+          description: OData-style orderby expression
+          required: false
+          schema:
+            type: string
+            example: "catName asc"
+        - name: $select
+          in: query
+          description: OData-style select expression
+          required: false
+          schema:
+            type: string
+            example: "catName,catType"
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CatListResponse'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    post:
+      tags:
+        - Cat
+      summary: Create a new cat
+      description: Creates a new cat entity
+      operationId: createCat
+      parameters:
+        - name: isDummy
+          in: query
+          description: Flag to indicate if response should come from controller directly
+          required: false
+          schema:
+            type: boolean
+            default: false
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CatCreate'
+      responses:
+        '201':
+          description: Cat created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CatResponse'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /cat/{catId}:
+    get:
+      tags:
+        - Cat
+      summary: Get cat by ID
+      description: Returns a single cat by ID
+      operationId: getCatById
+      parameters:
+        - name: catId
+          in: path
+          description: Cat ID
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000000
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CatResponse'
+        '404':
+          description: Cat not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    put:
+      tags:
+        - Cat
+      summary: Update cat by ID
+      description: Updates an existing cat
+      operationId: updateCatById
+      parameters:
+        - name: catId
+          in: path
+          description: Cat ID
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000000
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CatUpdate'
+      responses:
+        '200':
+          description: Cat updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CatResponse'
+        '404':
+          description: Cat not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    delete:
+      tags:
+        - Cat
+      summary: Delete cat by ID
+      description: Deletes a cat by ID
+      operationId: deleteCatById
+      parameters:
+        - name: catId
+          in: path
+          description: Cat ID
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000000
+      responses:
+        '200':
+          description: Cat deleted successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CatResponse'
+        '404':
+          description: Cat not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /cat/{catId}/ipv4:
+    post:
+      tags:
+        - Cat
+      summary: Add IPv4 address to cat
+      description: Associates an IPv4 address with a cat
+      operationId: addIpv4ToCat
+      parameters:
+        - name: catId
+          in: path
+          description: Cat ID
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000000
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IPv4'
+      responses:
+        '201':
+          description: IPv4 added successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IPv4Response'
+        '404':
+          description: Cat not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /cat/{catId}/ipv6:
+    post:
+      tags:
+        - Cat
+      summary: Add IPv6 address to cat
+      description: Associates an IPv6 address with a cat
+      operationId: addIpv6ToCat
+      parameters:
+        - name: catId
+          in: path
+          description: Cat ID
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 99
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IPv6'
+      responses:
+        '201':
+          description: IPv6 added successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IPv6Response'
+        '404':
+          description: Cat not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /cat/{catId}/ipaddress:
+    post:
+      tags:
+        - Cat
+      summary: Add IP address to cat
+      description: Associates an IP address (IPv4 or IPv6) with a cat
+      operationId: addIpAddressToCat
+      parameters:
+        - name: catId
+          in: path
+          description: Cat ID
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 99
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IPAddress'
+      responses:
+        '201':
+          description: IP address added successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IPAddressResponse'
+        '404':
+          description: Cat not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /cat/status:
+    get:
+      tags:
+        - Cat
+      summary: Get cat status by UUID
+      description: Returns task status using UUID headers
+      operationId: getCatStatusByUUID
+      parameters:
+        - name: NTNX-Request-ID
+          in: header
+          description: Nutanix request UUID
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: USER-Request-ID
+          in: header
+          description: User request UUID
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskResponse'
+        '404':
+          description: Task not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /cat/{fileId}/downloadFile:
+    get:
+      tags:
+        - Cat
+      summary: Download file
+      description: Downloads a file from remote SFTP server
+      operationId: downloadFile
+      parameters:
+        - name: fileId
+          in: path
+          description: File ID
+          required: true
+          schema:
+            type: integer
+            minimum: 2
+            maximum: 7
+      responses:
+        '200':
+          description: File downloaded successfully
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '404':
+          description: File not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /cat/{catId}/uploadFile:
+    post:
+      tags:
+        - Cat
+      summary: Upload file
+      description: Uploads a file to remote SFTP server
+      operationId: uploadFile
+      parameters:
+        - name: catId
+          in: path
+          description: Cat ID
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 10000
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+      responses:
+        '200':
+          description: File uploaded successfully
+          content:
+            text/plain:
+              schema:
+                type: string
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  schemas:
+    Cat:
+      type: object
+      required:
+        - catName
+        - catType
+      properties:
+        catId:
+          type: integer
+          description: Unique identifier for the cat
+          example: 1
+        catName:
+          type: string
+          description: Name of the cat
+          minLength: 1
+          maxLength: 255
+          example: "Kitty"
+        catType:
+          type: string
+          description: Type of the cat
+          enum: [TYPE1, TYPE2, TYPE3, TYPE4, TYPE5]
+          example: "TYPE1"
+        description:
+          type: string
+          description: Description of the cat
+          example: "Like to play with ball."
+        catImageFile:
+          type: string
+          description: Image file name
+          example: "kitty.jpg"
+        location:
+          $ref: '#/components/schemas/Location'
+
+    CatCreate:
+      type: object
+      required:
+        - catName
+        - catType
+      properties:
+        catName:
+          type: string
+          minLength: 1
+          maxLength: 255
+          example: "Fluffy"
+        catType:
+          type: string
+          enum: [TYPE1, TYPE2, TYPE3, TYPE4, TYPE5]
+          example: "TYPE2"
+        description:
+          type: string
+          example: "A fluffy cat"
+
+    CatUpdate:
+      type: object
+      properties:
+        catName:
+          type: string
+          minLength: 1
+          maxLength: 255
+        catType:
+          type: string
+          enum: [TYPE1, TYPE2, TYPE3, TYPE4, TYPE5]
+        description:
+          type: string
+
+    Location:
+      type: object
+      properties:
+        country:
+          $ref: '#/components/schemas/Country'
+        city:
+          type: string
+          example: "San Jose"
+        zip:
+          type: string
+          example: "95110"
+
+    Country:
+      type: object
+      properties:
+        state:
+          type: string
+          example: "California"
+
+    IPv4:
+      type: object
+      required:
+        - value
+      properties:
+        value:
+          type: string
+          description: IPv4 address
+          pattern: '^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$'
+          example: "192.168.1.100"
+        prefixLength:
+          type: integer
+          description: Prefix length
+          minimum: 0
+          maximum: 32
+          default: 32
+          example: 24
+        catId:
+          type: integer
+          description: Associated cat ID
+          example: 1
+
+    IPv6:
+      type: object
+      required:
+        - value
+      properties:
+        value:
+          type: string
+          description: IPv6 address
+          pattern: '^([0-9a-fA-F]{0,4}:){7}[0-9a-fA-F]{0,4}$'
+          example: "2001:0db8:85a3:0000:0000:8a2e:0370:7334"
+        prefixLength:
+          type: integer
+          description: Prefix length
+          minimum: 0
+          maximum: 128
+          default: 128
+          example: 64
+        catId:
+          type: integer
+          description: Associated cat ID
+          example: 1
+
+    IPAddress:
+      type: object
+      properties:
+        ipv4:
+          $ref: '#/components/schemas/IPv4'
+        ipv6:
+          $ref: '#/components/schemas/IPv6'
+
+    Task:
+      type: object
+      properties:
+        extId:
+          type: string
+          format: uuid
+          description: External task ID
+          example: "550e8400-e29b-41d4-a716-446655440000"
+
+    ApiLink:
+      type: object
+      properties:
+        rel:
+          type: string
+          description: Relationship type
+          example: "self"
+        href:
+          type: string
+          description: Link URL
+          example: "http://localhost:9009/mock/v4/config/cats"
+
+    ApiResponseMetadata:
+      type: object
+      properties:
+        totalAvailableResults:
+          type: integer
+          description: Total number of available results
+          example: 100
+        links:
+          type: array
+          items:
+            $ref: '#/components/schemas/ApiLink'
+        flags:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              value:
+                type: boolean
+
+    CatResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/Cat'
+        metadata:
+          $ref: '#/components/schemas/ApiResponseMetadata'
+
+    CatListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Cat'
+        metadata:
+          $ref: '#/components/schemas/ApiResponseMetadata'
+
+    IPv4Response:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/IPv4'
+        metadata:
+          $ref: '#/components/schemas/ApiResponseMetadata'
+
+    IPv6Response:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/IPv6'
+        metadata:
+          $ref: '#/components/schemas/ApiResponseMetadata'
+
+    IPAddressResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/IPAddress'
+        metadata:
+          $ref: '#/components/schemas/ApiResponseMetadata'
+
+    TaskResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/Task'
+        metadata:
+          $ref: '#/components/schemas/ApiResponseMetadata'
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+              example: "NOT_FOUND"
+            message:
+              type: string
+              example: "Cat not found"
+            details:
+              type: string
+              example: "Cat with ID 999 does not exist"
+

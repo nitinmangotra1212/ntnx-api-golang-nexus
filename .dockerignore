@@ -1,0 +1,37 @@
+# Binaries
+mock-api-server
+mock-api-server-*
+*.exe
+
+# Test and coverage files
+*.test
+*.out
+coverage.html
+
+# Development files
+.air.toml
+.vscode/
+.idea/
+
+# Git
+.git/
+.gitignore
+
+# Documentation
+*.md
+!README.md
+
+# Temporary files
+tmp/
+temp/
+*.log
+
+# Downloaded files
+/tmp/downloaded_files/
+
+# macOS
+.DS_Store
+
+# Go
+vendor/
+
