@@ -44,10 +44,10 @@ func LoadConfig() (*Config, error) {
 	viper.SetDefault("mockrest.file-server.remoteHost", "10.46.1.165")
 	viper.SetDefault("mockrest.file-server.username", "nutanix")
 	viper.SetDefault("mockrest.file-server.password", "nutanix/4u")
-	viper.SetDefault("mockrest.file-server.remoteFilePath", "/home/nutanix/data/farhan")
+	viper.SetDefault("mockrest.file-server.remoteFilePath", "/home/nutanix/data/nitin")
 	viper.SetDefault("mockrest.file-server.download-directory", "/tmp/downloaded_files")
-	viper.SetDefault("mockrest.file-server.upload-directory", "/home/nutanix/data/farhan/uploads/")
-	viper.SetDefault("mockrest.file-server.upload-url", "http://10.46.1.165/farhan/uploads/")
+	viper.SetDefault("mockrest.file-server.upload-directory", "/home/nutanix/data/nitin/uploads/")
+	viper.SetDefault("mockrest.file-server.upload-url", "http://10.46.1.165/nitin/uploads/")
 
 	// Read config file
 	if err := viper.ReadInConfig(); err != nil {

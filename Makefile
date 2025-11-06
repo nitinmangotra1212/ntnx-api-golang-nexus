@@ -1,14 +1,17 @@
-.PHONY: help build run clean test fmt lint docker-build docker-run
+.PHONY: help build run clean test fmt lint docker-build docker-run proto-gen
 
 # Variables
 BINARY_NAME=mock-api-server
 MAIN_PATH=./cmd/server
 DOCKER_IMAGE=ntnx-api-golang-mock
 VERSION?=1.0.0
+PROTO_DIR=./golang-mock-protos
+PROTO_OUT_DIR=./golang-mock-models
 
 # Default target
 help:
 	@echo "Available targets:"
+	@echo "  make proto-gen      - Generate Protocol Buffer code"
 	@echo "  make build          - Build the application"
 	@echo "  make run            - Run the application"
 	@echo "  make clean          - Clean build artifacts"
@@ -20,14 +23,22 @@ help:
 	@echo "  make install-deps   - Install dependencies"
 	@echo "  make all            - Build and run"
 
+# Generate Protocol Buffer code
+proto-gen:
+	@echo "🔧 Generating Protocol Buffer code..."
+	@cd $(PROTO_DIR) && ./generate.sh
+	@echo "✅ Protocol Buffer generation complete!"
+
 # Install dependencies
 install-deps:
 	@echo "Installing dependencies..."
 	go mod download
 	go mod tidy
+	@echo "Installing protoc-gen-go..."
+	go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
 
 # Build the application
-build:
+build: proto-gen
 	@echo "Building $(BINARY_NAME)..."
 	go build -o $(BINARY_NAME) -ldflags="-s -w" $(MAIN_PATH)
 	@echo "Build complete: ./$(BINARY_NAME)"

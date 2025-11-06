@@ -8,8 +8,8 @@ mockrest:
     remoteHost: 10.46.1.165
     username: nutanix
     password: "nutanix/4u"
-    remoteFilePath: "/home/nutanix/data/farhan"
+    remoteFilePath: "/home/nutanix/data/nitin"
     download-directory: "/tmp/downloaded_files"
-    upload-directory: "/home/nutanix/data/farhan/uploads/"
-    upload-url: "http://10.46.1.165/farhan/uploads/"
+    upload-directory: "/home/nutanix/data/nitin/uploads/"
+    upload-url: "http://10.46.1.165/nitin/uploads/"
 
