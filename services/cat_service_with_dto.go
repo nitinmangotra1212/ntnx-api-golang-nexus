@@ -282,14 +282,50 @@ func (s *CatServiceWithDTO) GetCatById_Process(w http.ResponseWriter, r *http.Re
 
 	// Create a new task
 	taskID := uuid.New().String()
-	global.Mutex.Lock()
-	global.Tasks[taskID] = &global.Task{
+	task := &global.Task{
 		TaskId:             taskID,
 		PercentageComplete: 0,
 		Status:             "PENDING",
 		Message:            fmt.Sprintf("Fetching cat %d asynchronously", catID),
 	}
+
+	// Store locally (for API Handler)
+	global.Mutex.Lock()
+	global.Tasks[taskID] = task
 	global.Mutex.Unlock()
+
+	// ✅ POST task to Task Server so it can track it
+	client := &http.Client{}
+	taskURL := fmt.Sprintf("http://%s:%s/tasks", global.TaskServerHost, global.TaskServerPort)
+	taskJSON, _ := json.Marshal(task)
+
+	log.Infof("📤 Registering task %s with Task Server: %s", taskID, taskURL)
+	log.Debugf("Task payload: %s", string(taskJSON))
+
+	req, err := http.NewRequest("POST", taskURL, bytes.NewBuffer(taskJSON))
+	if err != nil {
+		log.Errorf("Failed to create POST request: %v", err)
+		s.sendError(w, http.StatusInternalServerError, "Failed to create task")
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Errorf("Failed to register task with Task Server: %v", err)
+		s.sendError(w, http.StatusInternalServerError, "Failed to create task")
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		bodyBytes, _ := ioutil.ReadAll(resp.Body)
+		log.Errorf("Task Server returned non-OK status: %d - %s", resp.StatusCode, string(bodyBytes))
+		s.sendError(w, http.StatusInternalServerError, "Failed to register task")
+		return
+	}
+
+	log.Infof("✅ Task %s registered successfully with Task Server", taskID)
 
 	// Respond immediately with task ID
 	response := map[string]interface{}{

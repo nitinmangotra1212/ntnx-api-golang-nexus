@@ -1,0 +1,231 @@
+{
+	"info": {
+		"_postman_id": "grpc-mock-cat-service",
+		"name": "Mock Cat Service - gRPC",
+		"description": "gRPC API collection for Mock Cat Service with Protocol Buffers.\n\n**How to use:**\n1. Import this collection into Postman\n2. Make sure your gRPC server is running on localhost:50051\n3. Postman will automatically use the .proto files for schema\n4. All requests use binary Protocol Buffers (HTTP/2)\n\n**Server:** localhost:50051\n**Protocol:** gRPC (HTTP/2 + Protocol Buffers)",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "Cat Operations",
+			"item": [
+				{
+					"name": "List Cats (gRPC)",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "grpc",
+							"grpc": {
+								"method": "mock.v4.config.CatService/ListCats",
+								"request": {
+									"page": 1,
+									"limit": 10
+								}
+							}
+						},
+						"url": {
+							"raw": "grpc://localhost:50051/mock.v4.config.CatService/ListCats",
+							"protocol": "grpc",
+							"host": [
+								"localhost"
+							],
+							"port": "50051",
+							"path": [
+								"mock.v4.config.CatService",
+								"ListCats"
+							]
+						},
+						"description": "Lists all cats with pagination using gRPC.\n\n**Request (Protocol Buffers):**\n```json\n{\n  \"page\": 1,\n  \"limit\": 10\n}\n```\n\n**Response:**\n```json\n{\n  \"cats\": [\n    {\n      \"catId\": 1,\n      \"catName\": \"Cat-1\",\n      \"catType\": \"TYPE1\",\n      \"description\": \"A fluffy cat\"\n    }\n  ],\n  \"totalAvailableResults\": 100\n}\n```"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Cat by ID (gRPC)",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "grpc",
+							"grpc": {
+								"method": "mock.v4.config.CatService/GetCat",
+								"request": {
+									"cat_id": 42
+								}
+							}
+						},
+						"url": {
+							"raw": "grpc://localhost:50051/mock.v4.config.CatService/GetCat",
+							"protocol": "grpc",
+							"host": [
+								"localhost"
+							],
+							"port": "50051",
+							"path": [
+								"mock.v4.config.CatService",
+								"GetCat"
+							]
+						},
+						"description": "Get a specific cat by ID using gRPC.\n\n**Request:**\n```json\n{\n  \"cat_id\": 42\n}\n```\n\n**Response:**\n```json\n{\n  \"cat\": {\n    \"catId\": 42,\n    \"catName\": \"Cat-42\",\n    \"catType\": \"TYPE1\",\n    \"description\": \"A fluffy cat\",\n    \"location\": {\n      \"city\": \"San Francisco\",\n      \"country\": {\n        \"state\": \"California\"\n      }\n    }\n  }\n}\n```"
+					},
+					"response": []
+				},
+				{
+					"name": "Create Cat (gRPC)",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "grpc",
+							"grpc": {
+								"method": "mock.v4.config.CatService/CreateCat",
+								"request": {
+									"cat": {
+										"cat_name": "Whiskers",
+										"cat_type": "Persian",
+										"description": "A white fluffy Persian cat",
+										"location": {
+											"city": "New York",
+											"country": {
+												"state": "New York"
+											}
+										}
+									}
+								}
+							}
+						},
+						"url": {
+							"raw": "grpc://localhost:50051/mock.v4.config.CatService/CreateCat",
+							"protocol": "grpc",
+							"host": [
+								"localhost"
+							],
+							"port": "50051",
+							"path": [
+								"mock.v4.config.CatService",
+								"CreateCat"
+							]
+						},
+						"description": "Create a new cat using gRPC.\n\n**Request:**\n```json\n{\n  \"cat\": {\n    \"cat_name\": \"Whiskers\",\n    \"cat_type\": \"Persian\",\n    \"description\": \"A white fluffy Persian cat\"\n  }\n}\n```\n\n**Response:**\n```json\n{\n  \"cat\": {\n    \"catId\": 101,\n    \"catName\": \"Whiskers\",\n    \"catType\": \"Persian\",\n    \"description\": \"A white fluffy Persian cat\"\n  }\n}\n```"
+					},
+					"response": []
+				},
+				{
+					"name": "Update Cat (gRPC)",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "grpc",
+							"grpc": {
+								"method": "mock.v4.config.CatService/UpdateCat",
+								"request": {
+									"cat_id": 42,
+									"cat": {
+										"cat_name": "Updated Cat",
+										"cat_type": "Updated Type",
+										"description": "Updated description"
+									}
+								}
+							}
+						},
+						"url": {
+							"raw": "grpc://localhost:50051/mock.v4.config.CatService/UpdateCat",
+							"protocol": "grpc",
+							"host": [
+								"localhost"
+							],
+							"port": "50051",
+							"path": [
+								"mock.v4.config.CatService",
+								"UpdateCat"
+							]
+						},
+						"description": "Update an existing cat using gRPC.\n\n**Request:**\n```json\n{\n  \"cat_id\": 42,\n  \"cat\": {\n    \"cat_name\": \"Updated Cat\",\n    \"cat_type\": \"Updated Type\"\n  }\n}\n```"
+					},
+					"response": []
+				},
+				{
+					"name": "Delete Cat (gRPC)",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "grpc",
+							"grpc": {
+								"method": "mock.v4.config.CatService/DeleteCat",
+								"request": {
+									"cat_id": 42
+								}
+							}
+						},
+						"url": {
+							"raw": "grpc://localhost:50051/mock.v4.config.CatService/DeleteCat",
+							"protocol": "grpc",
+							"host": [
+								"localhost"
+							],
+							"port": "50051",
+							"path": [
+								"mock.v4.config.CatService",
+								"DeleteCat"
+							]
+						},
+						"description": "Delete a cat by ID using gRPC.\n\n**Request:**\n```json\n{\n  \"cat_id\": 42\n}\n```\n\n**Response:**\n```json\n{\n  \"message\": \"Cat with ID 42 deleted via gRPC\"\n}\n```"
+					},
+					"response": []
+				}
+			],
+			"description": "CRUD operations for Cat entities using gRPC"
+		},
+		{
+			"name": "Async Operations",
+			"item": [
+				{
+					"name": "Get Cat Async (gRPC)",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "grpc",
+							"grpc": {
+								"method": "mock.v4.config.CatService/GetCatAsync",
+								"request": {
+									"cat_id": 42
+								}
+							}
+						},
+						"url": {
+							"raw": "grpc://localhost:50051/mock.v4.config.CatService/GetCatAsync",
+							"protocol": "grpc",
+							"host": [
+								"localhost"
+							],
+							"port": "50051",
+							"path": [
+								"mock.v4.config.CatService",
+								"GetCatAsync"
+							]
+						},
+						"description": "Start an asynchronous operation to get a cat.\n\n**Request:**\n```json\n{\n  \"cat_id\": 42\n}\n```\n\n**Response:**\n```json\n{\n  \"task_id\": \"550e8400-e29b-41d4-a716-446655440000\",\n  \"poll_url\": \"http://localhost:9010/tasks/550e8400-e29b-41d4-a716-446655440000\"\n}\n```\n\n**Note:** Poll the REST Task Server at the poll_url to check status."
+					},
+					"response": []
+				}
+			],
+			"description": "Asynchronous operations that return a task ID"
+		}
+	],
+	"variable": [
+		{
+			"key": "grpc_host",
+			"value": "localhost",
+			"type": "string"
+		},
+		{
+			"key": "grpc_port",
+			"value": "50051",
+			"type": "string"
+		}
+	]
+}
+
