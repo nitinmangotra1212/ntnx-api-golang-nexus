@@ -1,0 +1,25 @@
+{
+    "folders": [
+        {
+            "path": "."
+        },
+        {
+            "path": "../ntnx-api-golang-mock-pc"
+        },
+        {
+            "path": "../ntnx-api-guru"
+        },
+        {
+            "path": "../ntnx-api-guru-pc"
+        },
+        {
+            "path": "../ntnx-api-petstore"
+        },
+        {
+            "path": "../ntnx-api-prism-service"
+        },
+        {
+            "path": "../ntnx-api-mockrest"
+        }
+    ]
+}

@@ -141,17 +141,16 @@ grpcurl -plaintext -d '{"page":1,"limit":5}' localhost:50051 mock.v4.config.CatS
 
 ### For Implementation Details
 - **[HOW_TO_RUN.md](./HOW_TO_RUN.md)** - Detailed build and run instructions
-- **[GRPC_FILES_GENERATED.md](../ntnx-api-golang-mock-pc/GRPC_FILES_GENERATED.md)** - Explains all .pb.go files
-- **[CODE_GENERATION_FLOW.md](../ntnx-api-golang-mock-pc/CODE_GENERATION_FLOW.md)** - Complete code generation flow (YAML → Proto → .pb.go)
+- **[ARCHITECTURE_OVERVIEW.md](./ARCHITECTURE_OVERVIEW.md)** - Complete architecture documentation
+- **[DEPLOY_TO_FRESH_PC.md](./DEPLOY_TO_FRESH_PC.md)** - Deployment guide with update steps
 
 ### For Testing
 - **[POSTMAN_GRPC_GUIDE.md](./POSTMAN_GRPC_GUIDE.md)** - How to test gRPC APIs (includes grpcurl & Postman)
-- **[TEST_GRPC_QUICK.sh](./TEST_GRPC_QUICK.sh)** - Quick gRPC test script (works 100%)
 - **[Postman_Collection_gRPC.json](./Postman_Collection_gRPC.json)** - Postman collection for gRPC testing
 
 ## 🔗 Related Repositories
 
-- **[ntnx-api-golang-mock-pc](../ntnx-api-golang-mock-pc)** - API definitions, Proto files, .pb.go generation
+- **[ntnx-api-golang-mock-pc](https://github.com/nitinmangotra1212/ntnx-api-golang-mock-pc)** - API definitions, Proto files, .pb.go generation
 
 ## 🎯 Key Highlights
 
