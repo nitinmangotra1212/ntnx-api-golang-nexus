@@ -9,7 +9,7 @@ import (
 	"net/http"
 
 	"github.com/gorilla/mux"
-	"github.com/nutanix/ntnx-api-golang-mock/interfaces/apis/mock/v4/config"
+	"github.com/nutanix/ntnx-api-golang-mock/golang-mock-service/interfaces/apis/mock/v4/config"
 	log "github.com/sirupsen/logrus"
 )
 

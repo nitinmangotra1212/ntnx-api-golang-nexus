@@ -12,7 +12,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
-	"github.com/nutanix/ntnx-api-golang-mock/global"
+	"github.com/nutanix/ntnx-api-golang-mock/golang-mock-service/global"
 
 	// Import generated DTOs with AUTO-SET $objectType!
 	generated "github.com/nutanix/ntnx-api-golang-mock-pc/generated-code/dto/models/mock/v4/config"

@@ -1,0 +1,114 @@
+/*
+ * Copyright (c) 2025 Nutanix Inc. All rights reserved.
+ *
+ * The underlying grpc server that exports the various services. Services may
+ * be added in the registerServices() implementation.
+ */
+
+package grpc
+
+import (
+	"context"
+	"fmt"
+	"net"
+	"runtime"
+	"strconv"
+	"sync"
+
+	grpcmiddleware "github.com/grpc-ecosystem/go-grpc-middleware"
+	grpc_recovery "github.com/grpc-ecosystem/go-grpc-middleware/recovery"
+	log "github.com/sirupsen/logrus"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/reflection"
+	"google.golang.org/grpc/status"
+
+	pb "github.com/nutanix/ntnx-api-golang-mock-pc/generated-code/protobuf/mock/v4/config"
+)
+
+const maxStackSize = 1 << 16
+
+// Server encapsulates the grpc server.
+type Server interface {
+	// Start the server. waitGroup will be used to track execution of the server.
+	Start(waitGroup *sync.WaitGroup)
+	Stop()
+}
+
+type ServerImpl struct {
+	port     uint64
+	listener net.Listener
+	gserver  *grpc.Server
+}
+
+// NewServer creates a new GRPC server that services can be exported with.
+// The connections are conditionally secured by mTLS. Errors are fatal.
+func NewServer(port uint64) (server Server) {
+	s := &ServerImpl{port: port}
+
+	// Configure recovery options for panic handling
+	recoverOpts := []grpc_recovery.Option{
+		grpc_recovery.WithRecoveryHandlerContext(func(ctx context.Context, rec interface{}) (err error) {
+			buf := make([]byte, maxStackSize)
+			stackSize := runtime.Stack(buf, true)
+			log.Errorf("gRPC panic: %v\n%s", rec, string(buf[0:stackSize]))
+			return status.Errorf(codes.Internal, "Internal server error")
+		}),
+	}
+
+	// Create gRPC server with chained interceptors
+	s.gserver = grpc.NewServer(
+		grpc.UnaryInterceptor(
+			grpcmiddleware.ChainUnaryServer(
+				grpc_recovery.UnaryServerInterceptor(recoverOpts...),
+			)),
+		grpc.StreamInterceptor(
+			grpcmiddleware.ChainStreamServer(
+				grpc_recovery.StreamServerInterceptor(recoverOpts...),
+			)),
+	)
+
+	s.registerServices()
+	return s
+}
+
+// registerServices is a central place for the grpc services that need to be
+// registered with the server before it is started.
+func (server *ServerImpl) registerServices() {
+	log.Info("Registering services with the gRPC server...")
+	catService := NewCatGrpcService()
+	pb.RegisterCatServiceServer(server.gserver, catService)
+	log.Info("Registered CatService with the gRPC server")
+
+	// Register reflection service (for grpcurl)
+	reflection.Register(server.gserver)
+	log.Info("Registered reflection service")
+}
+
+// Start listening and serve. Errors are fatal (todo).
+func (server *ServerImpl) Start(waitGroup *sync.WaitGroup) {
+	addr := ":" + strconv.FormatUint(server.port, 10)
+	log.Info(fmt.Sprintf("Starting Golang Mock gRPC server on %s.", addr))
+	var err error
+	server.listener, err = net.Listen("tcp4", addr)
+	if err != nil {
+		log.Fatalf("Failed to listen: %v.", err)
+	}
+	log.Infof("Golang Mock gRPC server listening on %s.", addr)
+
+	waitGroup.Add(1)
+	go func() {
+		defer waitGroup.Done()
+		if err := server.gserver.Serve(server.listener); err != nil {
+			log.Fatalf("Failed to serve: %v.", err)
+		}
+	}()
+}
+
+// Stop stops the grpc server.
+func (server *ServerImpl) Stop() {
+	if server.gserver != nil {
+		server.gserver.GracefulStop()
+	}
+}
+
