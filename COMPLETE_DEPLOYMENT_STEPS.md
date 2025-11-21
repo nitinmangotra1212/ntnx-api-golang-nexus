@@ -34,7 +34,10 @@ Ensure only necessary files are staged for commit.
 
 ### 1.3 Commit and Push Changes
 
+**For `ntnx-api-golang-mock`:**
 ```bash
+cd /Users/nitin.mangotra/ntnx-api-golang-mock
+
 # Add all changes
 git add .
 
@@ -45,7 +48,32 @@ git commit -m "Align golang-mock structure with az-manager standards"
 git push origin <your-branch>
 ```
 
-**Note**: Repeat the same process for `ntnx-api-golang-mock-pc` repository.
+**For `ntnx-api-golang-mock-pc`:**
+```bash
+cd /Users/nitin.mangotra/ntnx-api-golang-mock-pc
+
+# Add all changes including generated-code
+git add .
+
+# IMPORTANT: Ensure generated-code is included
+git add generated-code/
+
+# Verify generated-code files are staged
+git status --short generated-code/
+
+# Commit with descriptive message
+git commit -m "Align golang-mock-pc with az-manager-pc standards - include generated-code"
+
+# Push to remote repository
+git push origin <your-branch>
+```
+
+**Note**: The `generated-code` directory contains:
+- Generated Go DTOs (`dto/src/models/`)
+- Generated protobuf files (`protobuf/swagger/` and `protobuf/mock/`)
+- Go module files (`go.mod`)
+
+These files **must be committed** to the repository as they are required for the Go service build.
 
 ---
 
