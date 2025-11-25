@@ -78,7 +78,7 @@ go build -o bin/grpc-server ./cmd/grpc-server/main.go
 ./bin/grpc-server    # Port 50051
 
 # Test with grpcurl
-grpcurl -plaintext -d '{"page":1,"limit":5}' localhost:50051 mock.v4.config.CatService/ListCats
+grpcurl -plaintext -d '{"page":1,"limit":5}' localhost:50051 mock.v4.config.CatService/listCats
 ```
 
 ### Option 2: Start REST Servers (Backward Compatible)
@@ -99,7 +99,7 @@ curl 'http://localhost:9009/mock/v4/config/cats?$page=1&$limit=5'
 
 # Test gRPC flow
 grpcurl -plaintext localhost:50051 list
-grpcurl -plaintext -d '{"page":1,"limit":5}' localhost:50051 mock.v4.config.CatService/ListCats
+grpcurl -plaintext -d '{"page":1,"limit":5}' localhost:50051 mock.v4.config.CatService/listCats
 ```
 
 ## 📊 API Endpoints
@@ -108,12 +108,12 @@ grpcurl -plaintext -d '{"page":1,"limit":5}' localhost:50051 mock.v4.config.CatS
 
 | Method | Description | Example |
 |--------|-------------|---------|
-| `ListCats` | List all cats | `grpcurl -d '{"page":1,"limit":5}' localhost:50051 mock.v4.config.CatService/ListCats` |
-| `GetCat` | Get cat by ID | `grpcurl -d '{"cat_id":42}' localhost:50051 mock.v4.config.CatService/GetCat` |
-| `CreateCat` | Create new cat | `grpcurl -d '{"cat":{"cat_name":"Fluffy"}}' localhost:50051 mock.v4.config.CatService/CreateCat` |
-| `UpdateCat` | Update cat | `grpcurl -d '{"cat_id":42,"cat":{...}}' localhost:50051 mock.v4.config.CatService/UpdateCat` |
-| `DeleteCat` | Delete cat | `grpcurl -d '{"cat_id":42}' localhost:50051 mock.v4.config.CatService/DeleteCat` |
-| `GetCatAsync` | Async get cat | `grpcurl -d '{"cat_id":42}' localhost:50051 mock.v4.config.CatService/GetCatAsync` |
+| `ListCats` | List all cats | `grpcurl -d '{"page":1,"limit":5}' localhost:50051 mock.v4.config.CatService/listCats` |
+| `GetCat` | Get cat by ID | `grpcurl -d '{"cat_id":42}' localhost:50051 mock.v4.config.CatService/getCat` |
+| `CreateCat` | Create new cat | `grpcurl -d '{"cat":{"cat_name":"Fluffy"}}' localhost:50051 mock.v4.config.CatService/createCat` |
+| `UpdateCat` | Update cat | `grpcurl -d '{"cat_id":42,"cat":{...}}' localhost:50051 mock.v4.config.CatService/updateCat` |
+| `DeleteCat` | Delete cat | `grpcurl -d '{"cat_id":42}' localhost:50051 mock.v4.config.CatService/deleteCat` |
+| `GetCatAsync` | Async get cat | `grpcurl -d '{"cat_id":42}' localhost:50051 mock.v4.config.CatService/getCatAsync` |
 
 ### REST Endpoints (Port 9009) - Backward Compatible
 

@@ -1,5 +1,7 @@
 # Binaries
 golang-mock-server
+golang-mock-server-local
+golang-linux-final
 bin/
 
 # IDE

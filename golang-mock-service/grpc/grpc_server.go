@@ -56,14 +56,39 @@ func NewServer(port uint64) (server Server) {
 		}),
 	}
 
+	// Create logging interceptor for debug logs
+	loggingInterceptor := func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
+		log.Debugf("gRPC Request: Method=%s, Request=%+v", info.FullMethod, req)
+		resp, err := handler(ctx, req)
+		if err != nil {
+			log.Debugf("gRPC Response Error: Method=%s, Error=%v", info.FullMethod, err)
+		} else {
+			log.Debugf("gRPC Response: Method=%s, Response=%+v", info.FullMethod, resp)
+		}
+		return resp, err
+	}
+
+	streamLoggingInterceptor := func(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+		log.Debugf("gRPC Stream Request: Method=%s, StreamType=%v", info.FullMethod, info.IsClientStream)
+		err := handler(srv, ss)
+		if err != nil {
+			log.Debugf("gRPC Stream Response Error: Method=%s, Error=%v", info.FullMethod, err)
+		} else {
+			log.Debugf("gRPC Stream Response: Method=%s", info.FullMethod)
+		}
+		return err
+	}
+
 	// Create gRPC server with chained interceptors
 	s.gserver = grpc.NewServer(
 		grpc.UnaryInterceptor(
 			grpcmiddleware.ChainUnaryServer(
+				loggingInterceptor,
 				grpc_recovery.UnaryServerInterceptor(recoverOpts...),
 			)),
 		grpc.StreamInterceptor(
 			grpcmiddleware.ChainStreamServer(
+				streamLoggingInterceptor,
 				grpc_recovery.StreamServerInterceptor(recoverOpts...),
 			)),
 	)
@@ -111,4 +136,3 @@ func (server *ServerImpl) Stop() {
 		server.gserver.GracefulStop()
 	}
 }
-

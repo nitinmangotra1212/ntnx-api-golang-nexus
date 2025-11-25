@@ -10,12 +10,8 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/google/uuid"
 	pb "github.com/nutanix/ntnx-api-golang-mock-pc/generated-code/protobuf/mock/v4/config"
-	"github.com/nutanix/ntnx-api-golang-mock/golang-mock-service/global"
 	log "github.com/sirupsen/logrus"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
 
 // CatGrpcService implements the gRPC CatService
@@ -45,19 +41,24 @@ func (s *CatGrpcService) initializeMockCats() {
 	defer s.catMutex.Unlock()
 
 	for i := int32(1); i <= 100; i++ {
+		catName := fmt.Sprintf("Cat-%d", i)
+		catType := "TYPE1"
+		description := "A fluffy cat"
 		cat := &pb.Cat{
-			CatId:       i,
-			CatName:     fmt.Sprintf("Cat-%d", i),
-			CatType:     "TYPE1",
-			Description: "A fluffy cat",
+			CatId:       &i,
+			CatName:     &catName,
+			CatType:     &catType,
+			Description: &description,
 		}
 
 		// Add location for even numbered cats
 		if i%2 == 0 {
+			city := "San Francisco"
+			state := "California"
 			cat.Location = &pb.Location{
-				City: "San Francisco",
+				City: &city,
 				Country: &pb.Country{
-					State: "California",
+					State: &state,
 				},
 			}
 		}
@@ -69,21 +70,14 @@ func (s *CatGrpcService) initializeMockCats() {
 }
 
 // ListCats implements the gRPC ListCats RPC
-func (s *CatGrpcService) ListCats(ctx context.Context, req *pb.ListCatsRequest) (*pb.ListCatsResponse, error) {
-	log.Infof("gRPC: ListCats called (page=%d, limit=%d)", req.Page, req.Limit)
+func (s *CatGrpcService) ListCats(ctx context.Context, req *pb.ListCatsArg) (*pb.ListCatsRet, error) {
+	log.Infof("gRPC: ListCats called")
+	log.Debugf("gRPC: ListCats request details: %+v", req)
 
 	s.catMutex.RLock()
 	defer s.catMutex.RUnlock()
 
-	// Set defaults
-	page := req.Page
-	if page <= 0 {
-		page = 1
-	}
-	limit := req.Limit
-	if limit <= 0 {
-		limit = 10
-	}
+	log.Debugf("gRPC: Total cats in memory: %d", len(s.cats))
 
 	// Collect all cats
 	allCats := make([]*pb.Cat, 0, len(s.cats))
@@ -91,36 +85,34 @@ func (s *CatGrpcService) ListCats(ctx context.Context, req *pb.ListCatsRequest) 
 		allCats = append(allCats, cat)
 	}
 
-	// Calculate pagination
-	totalCount := int32(len(allCats))
-	startIdx := (page - 1) * limit
-	endIdx := startIdx + limit
-
-	if startIdx >= totalCount {
-		return &pb.ListCatsResponse{
-			Cats:       []*pb.Cat{},
-			TotalCount: totalCount,
-			Page:       page,
-			Limit:      limit,
-		}, nil
+	// Create CatArrayWrapper with all cats
+	catArrayWrapper := &pb.CatArrayWrapper{
+		Value: allCats,
 	}
 
-	if endIdx > totalCount {
-		endIdx = totalCount
+	// Create ListCatsApiResponse with CatArrayData
+	apiResponse := &pb.ListCatsApiResponse{
+		Data: &pb.ListCatsApiResponse_CatArrayData{
+			CatArrayData: catArrayWrapper,
+		},
 	}
 
-	paginatedCats := allCats[startIdx:endIdx]
+	log.Infof("✅ gRPC: Returning %d cats", len(allCats))
+	if log.GetLevel() == log.DebugLevel {
+		log.Debugf("gRPC: Returning cats: %+v", allCats)
+	}
 
-	log.Infof("✅ gRPC: Returning %d cats (page %d, limit %d)", len(paginatedCats), page, limit)
-
-	return &pb.ListCatsResponse{
-		Cats:       paginatedCats,
-		TotalCount: totalCount,
-		Page:       page,
-		Limit:      limit,
+	// Return ListCatsRet with Content
+	return &pb.ListCatsRet{
+		Content: apiResponse,
 	}, nil
 }
 
+// NOTE: The following methods (GetCat, CreateCat, UpdateCat, DeleteCat, GetCatAsync) are not yet
+// defined in the proto file. They are commented out until the proto definitions are added.
+// Uncomment and update them once the corresponding RPCs are added to cat_service.proto.
+
+/*
 // GetCat implements the gRPC GetCat RPC
 func (s *CatGrpcService) GetCat(ctx context.Context, req *pb.GetCatRequest) (*pb.GetCatResponse, error) {
 	log.Infof("gRPC: GetCat called (catId=%d)", req.CatId)
@@ -236,8 +228,11 @@ func (s *CatGrpcService) GetCatAsync(ctx context.Context, req *pb.GetCatAsyncReq
 		Message: fmt.Sprintf("Poll Task Server for task %s", taskID),
 	}, nil
 }
+*/
 
 // Process async task (simulates long-running operation)
+// NOTE: This function is commented out along with GetCatAsync since it's not in the proto
+/*
 func (s *CatGrpcService) processGetCatAsync(taskID string, catID int32) {
 	log.Infof("gRPC: Starting async processing for task %s (cat ID: %d)", taskID, catID)
 
@@ -271,3 +266,4 @@ func (s *CatGrpcService) processGetCatAsync(taskID string, catID int32) {
 
 	log.Infof("✅ gRPC: Completed async processing for task %s", taskID)
 }
+*/

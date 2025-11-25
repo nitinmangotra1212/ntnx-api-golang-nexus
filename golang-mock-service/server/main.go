@@ -16,7 +16,8 @@ import (
 )
 
 var (
-	port = flag.Int("port", 9090, "The server port")
+	port     = flag.Int("port", 9090, "The server port")
+	logLevel = flag.String("log-level", "info", "Log level: debug, info, warn, error (default: info)")
 )
 
 var (
@@ -24,8 +25,11 @@ var (
 )
 
 func main() {
+	// Parse command line flags
+	flag.Parse()
+
 	// Initialize logger with hot-reloading capability
-	logging.InitLogger()
+	logging.InitLogger(*logLevel)
 
 	log.Info("Starting Golang Mock Service...")
 
