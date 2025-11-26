@@ -11,6 +11,7 @@ import (
 	"sync"
 
 	pb "github.com/nutanix/ntnx-api-golang-mock-pc/generated-code/protobuf/mock/v4/config"
+	responseUtils "github.com/nutanix/ntnx-api-golang-mock/golang-mock-service/utils/response"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -85,27 +86,25 @@ func (s *CatGrpcService) ListCats(ctx context.Context, req *pb.ListCatsArg) (*pb
 		allCats = append(allCats, cat)
 	}
 
-	// Create CatArrayWrapper with all cats
-	catArrayWrapper := &pb.CatArrayWrapper{
-		Value: allCats,
-	}
+	totalCount := int32(len(allCats))
 
-	// Create ListCatsApiResponse with CatArrayData
-	apiResponse := &pb.ListCatsApiResponse{
-		Data: &pb.ListCatsApiResponse_CatArrayData{
-			CatArrayData: catArrayWrapper,
-		},
-	}
+	// Determine if paginated (for now, always false since we don't have page/limit in ListCatsArg yet)
+	isPaginated := false
 
-	log.Infof("✅ gRPC: Returning %d cats", len(allCats))
+	// Get pagination links (even if not paginated, we still want self link)
+	apiUrl := responseUtils.GetApiUrl(ctx, "", "", "", nil, nil)
+	paginationLinks := responseUtils.GetPaginationLinks(int64(totalCount), apiUrl)
+
+	// Create response with metadata
+	response := responseUtils.CreateListCatsResponse(allCats, paginationLinks, isPaginated, totalCount)
+
+	log.Infof("✅ gRPC: Returning %d cats with metadata", totalCount)
 	if log.GetLevel() == log.DebugLevel {
 		log.Debugf("gRPC: Returning cats: %+v", allCats)
+		log.Debugf("gRPC: Metadata: %+v", response.Content.Metadata)
 	}
 
-	// Return ListCatsRet with Content
-	return &pb.ListCatsRet{
-		Content: apiResponse,
-	}, nil
+	return response, nil
 }
 
 // NOTE: The following methods (GetCat, CreateCat, UpdateCat, DeleteCat, GetCatAsync) are not yet
