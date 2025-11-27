@@ -53,6 +53,8 @@ github.com/nutanix-core/go-backports/golang.org/x/crypto2 v0.0.0-20240808214654-
 github.com/nutanix-core/go-backports/golang.org/x/crypto2 v0.0.0-20240808214654-54b39e574625/go.mod h1:Z5XjQ3vsb+gnteo3ypO4UvvPeLEAL5rjbudasIkH3sE=
 github.com/nutanix-core/go-cache v0.0.0-20251014060132-91a71b98a157 h1:TjJZbgqezhz5jfz0pyAnfE/X6rVn/AZwaXvp98wLV/M=
 github.com/nutanix-core/go-cache v0.0.0-20251014060132-91a71b98a157/go.mod h1:rZZ71W0M06kgDEV0iouENaT4RiOHXTXCFj9B0ESxLEI=
+github.com/nutanix-core/ntnx-api-odata-go v1.0.27 h1:IEDzeoh/uZgD+g1ibSwBOV2EKzVIKOiEtB9v9UypK+U=
+github.com/nutanix-core/ntnx-api-odata-go v1.0.27/go.mod h1:Rnh9vyZb4msuXtbV7ChrOekxZcjgpCcYW6rceh97IYg=
 github.com/opentracing/opentracing-go v1.1.0/go.mod h1:UkNAQd3GIcIGf0SeVgPpRdFStlNbqXla1AfSYxPUl2o=
 github.com/pkg/errors v0.8.1/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINEl0=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
@@ -72,6 +74,8 @@ github.com/stretchr/testify v1.4.0/go.mod h1:j7eGeouHqKxXV5pUuKE4zz7dFj8WfuZ+81P
 github.com/stretchr/testify v1.7.0/go.mod h1:6Fq8oRcR53rry900zMqJjRRixrwX3KX962/h/Wwjteg=
 github.com/stretchr/testify v1.11.1 h1:7s2iGBzp5EwR7/aIZr8ao5+dra3wiQyKjjFuvgVKu7U=
 github.com/stretchr/testify v1.11.1/go.mod h1:wZwfW3scLgRK+23gO65QZefKpKQRnfz6sD981Nm4B6U=
+github.com/thoas/go-funk v0.9.3 h1:7+nAEx3kn5ZJcnDm2Bh23N2yOtweO14bi//dvRtgLpw=
+github.com/thoas/go-funk v0.9.3/go.mod h1:+IWnUfUmFO1+WVYQWQtIJHeRRdaIyyYglZN7xzUPe4Q=
 github.com/yuin/goldmark v1.1.27/go.mod h1:3hX8gzYuyVAZsxl0MRgGTJEmQBFcNTphYh9decYSb74=
 github.com/yuin/goldmark v1.2.1/go.mod h1:3hX8gzYuyVAZsxl0MRgGTJEmQBFcNTphYh9decYSb74=
 go.opentelemetry.io/auto/sdk v1.2.1 h1:jXsnJ4Lmnqd11kwkBV2LgLoFMZKizbCi5fNZ/ipaZ64=

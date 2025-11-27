@@ -10,7 +10,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/nutanix-core/go-cache/insights/insights_interface"
-	idfQr "github.com/nutanix-core/go-cache/insights/insights_interface/query"
 	pb "github.com/nutanix/ntnx-api-golang-nexus-pc/generated-code/protobuf/nexus/v4/config"
 	"github.com/nutanix/ntnx-api-golang-nexus/golang-nexus-service/db"
 	"github.com/nutanix/ntnx-api-golang-nexus/golang-nexus-service/external"
@@ -97,46 +96,15 @@ func (r *ItemRepositoryImpl) CreateItem(itemEntity *models.ItemEntity) error {
 }
 
 // ListItems retrieves a list of items from IDF with pagination and filtering
+// Uses OData parser to handle $filter, $orderby, $select, $expand
 func (r *ItemRepositoryImpl) ListItems(queryParams *models.QueryParams) ([]*pb.Item, int64, error) {
-	// Build IDF query
-	query, err := idfQr.QUERY(itemEntityTypeName + "ListQuery").
-		FROM(itemEntityTypeName).Proto()
+	// Use OData parser to generate IDF query (aligned with az-manager)
+	// This will parse $filter, $orderby, $select, $expand and convert to IDF query
+	queryArg, err := GenerateListQuery(queryParams, itemListPath, itemEntityTypeName, itemIdAttr)
 	if err != nil {
-		log.Errorf("Failed to build IDF query: %v", err)
-		return nil, 0, err
-	}
-
-	// Add pagination
-	page := queryParams.Page
-	limit := queryParams.Limit
-	if limit <= 0 {
-		limit = 50
-	}
-	offset := page * limit
-
-	if query.GroupBy == nil {
-		query.GroupBy = &insights_interface.QueryGroupBy{}
-	}
-
-	// CRITICAL: Specify which columns to fetch from IDF
-	// Without this, IDF returns entities but without attribute data populated
-	itemColumns := []string{itemIdAttr, itemNameAttr, itemTypeAttr, descriptionAttr, extIdAttr}
-	var rawColumns []*insights_interface.QueryRawColumn
-	for _, col := range itemColumns {
-		rawColumns = append(rawColumns, &insights_interface.QueryRawColumn{
-			Column: proto.String(col),
-		})
-	}
-	query.GroupBy.RawColumns = rawColumns
-	log.Debugf("IDF query columns: %v", itemColumns)
-
-	query.GroupBy.RawLimit = &insights_interface.QueryLimit{
-		Limit:  proto.Int64(int64(limit)),
-		Offset: proto.Int64(int64(offset)),
-	}
-
-	queryArg := &insights_interface.GetEntitiesWithMetricsArg{
-		Query: query,
+		// Error from OData parser - return with context
+		log.Errorf("Failed to generate IDF query from OData params: %v", err)
+		return nil, 0, fmt.Errorf("failed to parse OData query: %w", err)
 	}
 
 	// Query IDF

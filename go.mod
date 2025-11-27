@@ -6,6 +6,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/grpc-ecosystem/go-grpc-middleware v1.4.0
 	github.com/nutanix-core/go-cache v0.0.0-20251014060132-91a71b98a157
+	github.com/nutanix-core/ntnx-api-odata-go v1.0.27
 	github.com/nutanix-core/ntnx-api-utils-go v1.0.38
 	github.com/nutanix/ntnx-api-golang-nexus-pc/generated-code/dto v0.0.0
 	github.com/nutanix/ntnx-api-golang-nexus-pc/generated-code/protobuf/common/v1/config v0.0.0-00010101000000-000000000000
@@ -26,6 +27,7 @@ require (
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.27.2 // indirect
 	github.com/nutanix-core/go-backports/golang.org/x/crypto2 v0.0.0-20240808214654-54b39e574625 // indirect
 	github.com/nutanix/ntnx-api-golang-nexus-pc/generated-code/protobuf/nexus/v4/error v0.0.0-00010101000000-000000000000 // indirect
+	github.com/thoas/go-funk v0.9.3 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.60.0 // indirect
 	go.opentelemetry.io/contrib/propagators/jaeger v1.35.0 // indirect
