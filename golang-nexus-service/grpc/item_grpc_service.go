@@ -7,10 +7,10 @@ package grpc
 
 import (
 	"context"
-	"fmt"
-	"sync"
 
 	pb "github.com/nutanix/ntnx-api-golang-nexus-pc/generated-code/protobuf/nexus/v4/config"
+	"github.com/nutanix/ntnx-api-golang-nexus/golang-nexus-service/db"
+	"github.com/nutanix/ntnx-api-golang-nexus/golang-nexus-service/utils/query"
 	responseUtils "github.com/nutanix/ntnx-api-golang-nexus/golang-nexus-service/utils/response"
 	log "github.com/sirupsen/logrus"
 )
@@ -18,56 +18,16 @@ import (
 // ItemGrpcService implements the gRPC ItemService
 type ItemGrpcService struct {
 	pb.UnimplementedItemServiceServer
-	itemMutex sync.RWMutex
-	items     map[int32]*pb.Item
+	itemRepository db.ItemRepository
 }
 
-// NewItemGrpcService creates a new gRPC Item service
-func NewItemGrpcService() *ItemGrpcService {
+// NewItemGrpcService creates a new gRPC Item service with IDF repository
+func NewItemGrpcService(itemRepository db.ItemRepository) *ItemGrpcService {
 	service := &ItemGrpcService{
-		items: make(map[int32]*pb.Item),
+		itemRepository: itemRepository,
 	}
-
-	// Initialize with mock data
-	service.initializeMockItems()
-
+	log.Info("✅ Initialized gRPC Item Service with IDF repository")
 	return service
-}
-
-// Initialize mock items
-func (s *ItemGrpcService) initializeMockItems() {
-	log.Info("🎯 Initializing gRPC Item Service with mock data")
-
-	s.itemMutex.Lock()
-	defer s.itemMutex.Unlock()
-
-	for i := int32(1); i <= 100; i++ {
-		itemName := fmt.Sprintf("Item-%d", i)
-		itemType := "TYPE1"
-		description := "A fluffy item"
-		item := &pb.Item{
-			ItemId:      &i,
-			ItemName:    &itemName,
-			ItemType:    &itemType,
-			Description: &description,
-		}
-
-		// Add location for even numbered items
-		if i%2 == 0 {
-			city := "San Francisco"
-			state := "California"
-			item.Location = &pb.Location{
-				City: &city,
-				Country: &pb.Country{
-					State: &state,
-				},
-			}
-		}
-
-		s.items[i] = item
-	}
-
-	log.Infof("✅ Initialized %d items in gRPC service", len(s.items))
 }
 
 // ListItems implements the gRPC ListItems RPC
@@ -75,32 +35,30 @@ func (s *ItemGrpcService) ListItems(ctx context.Context, req *pb.ListItemsArg) (
 	log.Infof("gRPC: ListItems called")
 	log.Debugf("gRPC: ListItems request details: %+v", req)
 
-	s.itemMutex.RLock()
-	defer s.itemMutex.RUnlock()
+	// Extract query parameters from context (OData params from HTTP request)
+	queryParams := query.ExtractQueryParamsFromContext(ctx)
 
-	log.Debugf("gRPC: Total items in memory: %d", len(s.items))
-
-	// Collect all items
-	allItems := make([]*pb.Item, 0, len(s.items))
-	for _, item := range s.items {
-		allItems = append(allItems, item)
+	// Call repository to fetch items from IDF
+	items, totalCount, err := s.itemRepository.ListItems(queryParams)
+	if err != nil {
+		log.Errorf("❌ Failed to list items from IDF: %v", err)
+		return nil, err
 	}
 
-	totalCount := int32(len(allItems))
+	log.Debugf("gRPC: Retrieved %d items from IDF (total: %d)", len(items), totalCount)
 
-	// Determine if paginated (for now, always false since we don't have page/limit in ListItemsArg yet)
-	isPaginated := false
+	// Determine if paginated
+	isPaginated := queryParams.Page > 0 || queryParams.Limit > 0
 
-	// Get pagination links (even if not paginated, we still want self link)
-	apiUrl := responseUtils.GetApiUrl(ctx, "", "", "", nil, nil)
-	paginationLinks := responseUtils.GetPaginationLinks(int64(totalCount), apiUrl)
+	// Get pagination links
+	apiUrl := responseUtils.GetApiUrl(ctx, queryParams.Filter, queryParams.Expand, queryParams.Orderby, &queryParams.Limit, &queryParams.Page)
+	paginationLinks := responseUtils.GetPaginationLinks(totalCount, apiUrl)
 
 	// Create response with metadata
-	response := responseUtils.CreateListItemsResponse(allItems, paginationLinks, isPaginated, totalCount)
+	response := responseUtils.CreateListItemsResponse(items, paginationLinks, isPaginated, int32(totalCount))
 
-	log.Infof("✅ gRPC: Returning %d items with metadata", totalCount)
+	log.Infof("✅ gRPC: Returning %d items with metadata (total: %d)", len(items), totalCount)
 	if log.GetLevel() == log.DebugLevel {
-		log.Debugf("gRPC: Returning items: %+v", allItems)
 		log.Debugf("gRPC: Metadata: %+v", response.Content.Metadata)
 	}
 

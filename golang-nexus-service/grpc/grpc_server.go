@@ -33,6 +33,8 @@ type Server interface {
 	// Start the server. waitGroup will be used to track execution of the server.
 	Start(waitGroup *sync.WaitGroup)
 	Stop()
+	// RegisterItemService registers the ItemService with the gRPC server
+	RegisterItemService(itemService *ItemGrpcService)
 }
 
 type ServerImpl struct {
@@ -101,13 +103,17 @@ func NewServer(port uint64) (server Server) {
 // registered with the server before it is started.
 func (server *ServerImpl) registerServices() {
 	log.Info("Registering services with the gRPC server...")
-	itemService := NewItemGrpcService()
-	pb.RegisterItemServiceServer(server.gserver, itemService)
-	log.Info("Registered ItemService with the gRPC server")
-
+	// ItemService will be registered with IDF repository in main.go
 	// Register reflection service (for grpcurl)
 	reflection.Register(server.gserver)
 	log.Info("Registered reflection service")
+}
+
+// RegisterItemService registers the ItemService with the gRPC server
+// This is called from main.go after IDF is initialized
+func (server *ServerImpl) RegisterItemService(itemService *ItemGrpcService) {
+	pb.RegisterItemServiceServer(server.gserver, itemService)
+	log.Info("Registered ItemService with the gRPC server")
 }
 
 // Start listening and serve. Errors are fatal (todo).
