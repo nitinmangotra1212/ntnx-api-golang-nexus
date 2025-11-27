@@ -11,9 +11,9 @@ import (
 	"strings"
 
 	"github.com/nutanix-core/ntnx-api-utils-go/responseutils"
-	commonConfig "github.com/nutanix/ntnx-api-golang-mock-pc/generated-code/protobuf/common/v1/config"
-	"github.com/nutanix/ntnx-api-golang-mock-pc/generated-code/protobuf/common/v1/response"
-	pb "github.com/nutanix/ntnx-api-golang-mock-pc/generated-code/protobuf/mock/v4/config"
+	commonConfig "github.com/nutanix/ntnx-api-golang-nexus-pc/generated-code/protobuf/common/v1/config"
+	"github.com/nutanix/ntnx-api-golang-nexus-pc/generated-code/protobuf/common/v1/response"
+	pb "github.com/nutanix/ntnx-api-golang-nexus-pc/generated-code/protobuf/nexus/v4/config"
 	log "github.com/sirupsen/logrus"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/protobuf/proto"
@@ -176,13 +176,13 @@ func GetPaginationLinks(total int64, completeUrl string) []*response.ApiLink {
 	return paginationLinksList
 }
 
-// CreateListCatsResponse creates a response for ListCats API with metadata
-func CreateListCatsResponse(cats []*pb.Cat, paginationLinks []*response.ApiLink, isPaginated bool, totalAvailableResults int32) *pb.ListCatsRet {
-	resp := &pb.ListCatsRet{
-		Content: &pb.ListCatsApiResponse{
-			Data: &pb.ListCatsApiResponse_CatArrayData{
-				CatArrayData: &pb.CatArrayWrapper{
-					Value: cats,
+// CreateListItemsResponse creates a response for ListItems API with metadata
+func CreateListItemsResponse(items []*pb.Item, paginationLinks []*response.ApiLink, isPaginated bool, totalAvailableResults int32) *pb.ListItemsRet {
+	resp := &pb.ListItemsRet{
+		Content: &pb.ListItemsApiResponse{
+			Data: &pb.ListItemsApiResponse_ItemArrayData{
+				ItemArrayData: &pb.ItemArrayWrapper{
+					Value: items,
 				},
 			},
 			Metadata: CreateResponseMetadata(false, isPaginated, paginationLinks, "", ""),

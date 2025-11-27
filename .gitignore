@@ -21,3 +21,7 @@ logs/
 # Temporary files
 *.tmp
 *.bak
+
+# Build artifacts
+golang-nexus-server
+golang-nexus-server-local

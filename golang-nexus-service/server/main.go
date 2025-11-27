@@ -11,8 +11,8 @@ import (
 
 	log "github.com/sirupsen/logrus"
 
-	"github.com/nutanix/ntnx-api-golang-mock/golang-mock-service/grpc"
-	"github.com/nutanix/ntnx-api-golang-mock/golang-mock-service/utils/logging"
+	"github.com/nutanix/ntnx-api-golang-nexus/golang-nexus-service/grpc"
+	"github.com/nutanix/ntnx-api-golang-nexus/golang-nexus-service/utils/logging"
 )
 
 var (
@@ -31,7 +31,7 @@ func main() {
 	// Initialize logger with hot-reloading capability
 	logging.InitLogger(*logLevel)
 
-	log.Info("Starting Golang Mock Service...")
+	log.Info("Starting Golang Nexus Service...")
 
 	// Start gRPC server
 	startGRPCServer()

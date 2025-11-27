@@ -8,7 +8,7 @@ package global
 import (
 	"sync"
 
-	generated "github.com/nutanix/ntnx-api-golang-mock-pc/generated-code/dto/models/mock/v4/config"
+	generated "github.com/nutanix/ntnx-api-golang-nexus-pc/generated-code/dto/models/nexus/v4/config"
 )
 
 // Server ports and hosts
@@ -34,10 +34,10 @@ var (
 	TaskMutex sync.RWMutex
 )
 
-// CatStore holds all cats using auto-generated DTOs (in-memory for demo)
+// ItemStore holds all items using auto-generated DTOs (in-memory for demo)
 var (
-	CatsDTO  = make(map[int]*generated.Cat)
-	CatMutex sync.RWMutex
+	ItemsDTO  = make(map[int]*generated.Item)
+	ItemMutex sync.RWMutex
 	Tasks    = make(map[string]*Task) // For backwards compatibility
 	Mutex    = &sync.Mutex{}          // For backwards compatibility
 )
@@ -57,7 +57,7 @@ type Task struct {
 // NewTask creates a new task with default values
 func NewTask(taskId string) *Task {
 	return &Task{
-		ObjectType_: stringPtr("mock.v4.config.Task"),
+		ObjectType_: stringPtr("nexus.v4.config.Task"),
 		Reserved_: map[string]interface{}{
 			"$fv": "v4.r1",
 		},

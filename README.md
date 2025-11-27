@@ -1,4 +1,4 @@
-# ntnx-api-golang-mock
+# ntnx-api-golang-nexus
 
 **Production-grade API service with REAL gRPC + REST support**, following Nutanix v4 API standards.
 
@@ -25,19 +25,19 @@ Quick links:
 - **gRPC Server** (Port 50051): **REAL gRPC service** ⭐
 
 ```
-ntnx-api-golang-mock/
+ntnx-api-golang-nexus/
 ├── cmd/
 │   ├── api-server/main.go         # REST API Handler Server
 │   ├── task-server/main.go        # Task Server
 │   └── grpc-server/main.go        # gRPC Server ⭐
 ├── grpc/
-│   └── cat_grpc_service.go        # gRPC service implementation ⭐
+│   └── item_grpc_service.go        # gRPC service implementation ⭐
 ├── services/
-│   └── cat_service_with_dto.go    # REST business logic
+│   └── item_service_with_dto.go    # REST business logic
 ├── routes/
 │   └── routes.go                  # gorilla/mux routing (REST)
 ├── interfaces/
-│   └── apis/mock/v4/config/       # REST interface definitions
+│   └── apis/nexus/v4/config/       # REST interface definitions
 ├── global/
 │   └── global.go                  # Global state management
 └── configs/
@@ -47,7 +47,7 @@ ntnx-api-golang-mock/
 ## ✨ Features
 
 ### gRPC Features ⭐
-- ✅ **Real .pb.go files** (config.pb.go, cat_service_grpc.pb.go)
+- ✅ **Real .pb.go files** (config.pb.go, item_service_grpc.pb.go)
 - ✅ **HTTP/2 + Protocol Buffers** (10x faster than REST)
 - ✅ **Type-safe** (compile-time checked)
 - ✅ **grpcurl compatible** (easy testing)
@@ -58,14 +58,14 @@ ntnx-api-golang-mock/
 - ✅ **Nutanix v4 Compliance** ($objectType, $reserved, flags, links)
 - ✅ **Pagination** ($page, $limit, HATEOAS links)
 - ✅ **Async Operations** (Task-based workflow)
-- ✅ **Full CRUD** for Cat entities
+- ✅ **Full CRUD** for Item entities
 - ✅ **OData Query Parameters** ($filter, $orderby, $select)
 
 ## 🚀 Quick Start
 
 ### Prerequisites
 - **Go 1.21+**
-- **ntnx-api-golang-mock-pc** (for generated .pb.go files)
+- **ntnx-api-golang-nexus-pc** (for generated .pb.go files)
 - **grpcurl** (for gRPC testing): `brew install grpcurl`
 
 ### Option 1: Start gRPC Server (Recommended) ⭐
@@ -78,7 +78,7 @@ go build -o bin/grpc-server ./cmd/grpc-server/main.go
 ./bin/grpc-server    # Port 50051
 
 # Test with grpcurl
-grpcurl -plaintext -d '{"page":1,"limit":5}' localhost:50051 mock.v4.config.CatService/listCats
+grpcurl -plaintext -d '{"page":1,"limit":5}' localhost:50051 nexus.v4.config.ItemService/listItems
 ```
 
 ### Option 2: Start REST Servers (Backward Compatible)
@@ -88,7 +88,7 @@ grpcurl -plaintext -d '{"page":1,"limit":5}' localhost:50051 mock.v4.config.CatS
 ./start-servers.sh
 
 # Test with curl
-curl 'http://localhost:9009/mock/v4/config/cats?$page=1&$limit=5'
+curl 'http://localhost:9009/nexus/v4/config/items?$page=1&$limit=5'
 ```
 
 ### Run Complete Test Suite
@@ -99,7 +99,7 @@ curl 'http://localhost:9009/mock/v4/config/cats?$page=1&$limit=5'
 
 # Test gRPC flow
 grpcurl -plaintext localhost:50051 list
-grpcurl -plaintext -d '{"page":1,"limit":5}' localhost:50051 mock.v4.config.CatService/listCats
+grpcurl -plaintext -d '{"page":1,"limit":5}' localhost:50051 nexus.v4.config.ItemService/listItems
 ```
 
 ## 📊 API Endpoints
@@ -108,23 +108,23 @@ grpcurl -plaintext -d '{"page":1,"limit":5}' localhost:50051 mock.v4.config.CatS
 
 | Method | Description | Example |
 |--------|-------------|---------|
-| `ListCats` | List all cats | `grpcurl -d '{"page":1,"limit":5}' localhost:50051 mock.v4.config.CatService/listCats` |
-| `GetCat` | Get cat by ID | `grpcurl -d '{"cat_id":42}' localhost:50051 mock.v4.config.CatService/getCat` |
-| `CreateCat` | Create new cat | `grpcurl -d '{"cat":{"cat_name":"Fluffy"}}' localhost:50051 mock.v4.config.CatService/createCat` |
-| `UpdateCat` | Update cat | `grpcurl -d '{"cat_id":42,"cat":{...}}' localhost:50051 mock.v4.config.CatService/updateCat` |
-| `DeleteCat` | Delete cat | `grpcurl -d '{"cat_id":42}' localhost:50051 mock.v4.config.CatService/deleteCat` |
-| `GetCatAsync` | Async get cat | `grpcurl -d '{"cat_id":42}' localhost:50051 mock.v4.config.CatService/getCatAsync` |
+| `ListItems` | List all items | `grpcurl -d '{"page":1,"limit":5}' localhost:50051 nexus.v4.config.ItemService/listItems` |
+| `GetItem` | Get item by ID | `grpcurl -d '{"item_id":42}' localhost:50051 nexus.v4.config.ItemService/getItem` |
+| `CreateItem` | Create new item | `grpcurl -d '{"item":{"item_name":"Fluffy"}}' localhost:50051 nexus.v4.config.ItemService/createItem` |
+| `UpdateItem` | Update item | `grpcurl -d '{"item_id":42,"item":{...}}' localhost:50051 nexus.v4.config.ItemService/updateItem` |
+| `DeleteItem` | Delete item | `grpcurl -d '{"item_id":42}' localhost:50051 nexus.v4.config.ItemService/deleteItem` |
+| `GetItemAsync` | Async get item | `grpcurl -d '{"item_id":42}' localhost:50051 nexus.v4.config.ItemService/getItemAsync` |
 
 ### REST Endpoints (Port 9009) - Backward Compatible
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/mock/v4/config/cats` | List cats (paginated) |
-| GET | `/mock/v4/config/cats/{id}` | Get cat by ID |
-| POST | `/mock/v4/config/cats` | Create cat |
-| PUT | `/mock/v4/config/cats/{id}` | Update cat |
-| DELETE | `/mock/v4/config/cats/{id}` | Delete cat |
-| POST | `/mock/v4/config/cats/{id}/_process` | Start async processing |
+| GET | `/nexus/v4/config/items` | List items (paginated) |
+| GET | `/nexus/v4/config/items/{id}` | Get item by ID |
+| POST | `/nexus/v4/config/items` | Create item |
+| PUT | `/nexus/v4/config/items/{id}` | Update item |
+| DELETE | `/nexus/v4/config/items/{id}` | Delete item |
+| POST | `/nexus/v4/config/items/{id}/_process` | Start async processing |
 
 ### Task Endpoints (Port 9010)
 
@@ -150,13 +150,13 @@ grpcurl -plaintext -d '{"page":1,"limit":5}' localhost:50051 mock.v4.config.CatS
 
 ## 🔗 Related Repositories
 
-- **[ntnx-api-golang-mock-pc](https://github.com/nitinmangotra1212/ntnx-api-golang-mock-pc)** - API definitions, Proto files, .pb.go generation
+- **[ntnx-api-golang-nexus-pc](https://github.com/nitinmangotra1212/ntnx-api-golang-nexus-pc)** - API definitions, Proto files, .pb.go generation
 
 ## 🎯 Key Highlights
 
 | Feature | Value |
 |---------|-------|
-| **gRPC Service** | `mock.v4.config.CatService` |
+| **gRPC Service** | `nexus.v4.config.ItemService` |
 | **Protocol** | HTTP/2 + Protocol Buffers |
 | **Performance** | 10x faster than REST |
 | **Type Safety** | Compile-time checked |

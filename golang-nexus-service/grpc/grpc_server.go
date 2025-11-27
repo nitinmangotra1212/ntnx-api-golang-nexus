@@ -23,7 +23,7 @@ import (
 	"google.golang.org/grpc/reflection"
 	"google.golang.org/grpc/status"
 
-	pb "github.com/nutanix/ntnx-api-golang-mock-pc/generated-code/protobuf/mock/v4/config"
+	pb "github.com/nutanix/ntnx-api-golang-nexus-pc/generated-code/protobuf/nexus/v4/config"
 )
 
 const maxStackSize = 1 << 16
@@ -101,9 +101,9 @@ func NewServer(port uint64) (server Server) {
 // registered with the server before it is started.
 func (server *ServerImpl) registerServices() {
 	log.Info("Registering services with the gRPC server...")
-	catService := NewCatGrpcService()
-	pb.RegisterCatServiceServer(server.gserver, catService)
-	log.Info("Registered CatService with the gRPC server")
+	itemService := NewItemGrpcService()
+	pb.RegisterItemServiceServer(server.gserver, itemService)
+	log.Info("Registered ItemService with the gRPC server")
 
 	// Register reflection service (for grpcurl)
 	reflection.Register(server.gserver)
@@ -113,13 +113,13 @@ func (server *ServerImpl) registerServices() {
 // Start listening and serve. Errors are fatal (todo).
 func (server *ServerImpl) Start(waitGroup *sync.WaitGroup) {
 	addr := ":" + strconv.FormatUint(server.port, 10)
-	log.Info(fmt.Sprintf("Starting Golang Mock gRPC server on %s.", addr))
+	log.Info(fmt.Sprintf("Starting Golang Nexus gRPC server on %s.", addr))
 	var err error
 	server.listener, err = net.Listen("tcp4", addr)
 	if err != nil {
 		log.Fatalf("Failed to listen: %v.", err)
 	}
-	log.Infof("Golang Mock gRPC server listening on %s.", addr)
+	log.Infof("Golang Nexus gRPC server listening on %s.", addr)
 
 	waitGroup.Add(1)
 	go func() {
