@@ -25,7 +25,7 @@ func GenerateListQuery(queryParams *models.QueryParams, resourcePath string,
 	// Get entity bindings for nexus module
 	// For now, we'll create a minimal EDM provider with Item entity binding
 	entityBindingList := GetNexusEntityBindings()
-	
+
 	log.Debugf("EDM bindings count: %d", len(entityBindingList))
 	for i, binding := range entityBindingList {
 		if binding.PropertyMappings != nil {
@@ -35,10 +35,10 @@ func GenerateListQuery(queryParams *models.QueryParams, resourcePath string,
 
 	// Create EDM provider with entity bindings
 	edmProvider := edm.NewCustomEdmProvider(entityBindingList)
-	
+
 	// Create OData parser
 	odataParser := parser.NewParser(edmProvider)
-	
+
 	// Create query parameter object
 	queryParam := parser.NewQueryParam()
 	if queryParams.Filter != "" {
@@ -61,16 +61,31 @@ func GenerateListQuery(queryParams *models.QueryParams, resourcePath string,
 	uriInfo, parseErr := odataParser.ParserWithQueryParam(queryParam, resourcePath)
 	if parseErr != nil {
 		log.Errorf("Failed to Parse OData expression: %v", parseErr)
+		// Return error with context for AppMessage formatting
 		return nil, fmt.Errorf("invalid OData query: %w", parseErr)
 	}
 
-	// Use IDF query evaluator to convert parsed OData to IDF query
-	// For now, we don't support GraphQL expansion, so use regular IDF evaluator
-	log.Debugf("Using regular IDF query evaluator")
-	idfQueryEval := idf.IDFQueryEvaluator{}
-	idfQuery, evalErr := idfQueryEval.GetQuery(uriInfo, resourcePath)
+	// Use GraphQL query evaluator when expansion is requested, otherwise use regular IDF evaluator
+	// This follows az-manager pattern
+	var idfQuery *insights_interface.Query
+	var evalErr error
+
+	if queryParams.Expand != "" {
+		log.Infof("Using GraphQL query evaluator for expansion: %s", queryParams.Expand)
+		// Note: GraphQL query generation is handled separately in repository
+		// For now, we still need IDF query for non-expanded fields
+		// The actual GraphQL execution happens in repository
+		idfQueryEval := idf.IDFQueryEvaluator{}
+		idfQuery, evalErr = idfQueryEval.GetQuery(uriInfo, resourcePath)
+	} else {
+		log.Debugf("Using regular IDF query evaluator")
+		idfQueryEval := idf.IDFQueryEvaluator{}
+		idfQuery, evalErr = idfQueryEval.GetQuery(uriInfo, resourcePath)
+	}
+
 	if evalErr != nil {
 		log.Errorf("Failed to Evaluate OData expression: %v", evalErr)
+		// Return error with context for AppMessage formatting
 		return nil, fmt.Errorf("failed to evaluate OData query: %w", evalErr)
 	}
 
@@ -88,7 +103,7 @@ func GenerateListQuery(queryParams *models.QueryParams, resourcePath string,
 // This follows az-manager's constructIDFQuery pattern
 func constructIDFQuery(queryParams *models.QueryParams, idfQuery *insights_interface.Query,
 	entityType string, defaultSortColumn string) (*insights_interface.GetEntitiesWithMetricsArg, error) {
-	
+
 	// Build base query
 	query, err := idfQr.QUERY(entityType + "ListQuery").
 		FROM(entityType).Proto()
@@ -170,15 +185,19 @@ func constructIDFQuery(queryParams *models.QueryParams, idfQuery *insights_inter
 }
 
 // GetNexusEntityBindings returns EDM entity bindings for nexus module
-// This creates a minimal EDM binding for the Item entity
+// This creates EDM bindings for Item and ItemAssociation entities
 // In a full implementation, these would be generated from YAML definitions
 func GetNexusEntityBindings() []*edm.EdmEntityBinding {
 	var entityBindingList []*edm.EdmEntityBinding
-	
+
 	// Create Item entity binding
 	itemBinding := createItemEntityBinding()
 	entityBindingList = append(entityBindingList, itemBinding)
-	
+
+	// Create ItemAssociation entity binding (for $expand)
+	itemAssocBinding := createItemAssociationEntityBinding()
+	entityBindingList = append(entityBindingList, itemAssocBinding)
+
 	return entityBindingList
 }
 
@@ -190,11 +209,11 @@ func createItemEntityBinding() *edm.EdmEntityBinding {
 
 	// Set Property Mappings (OData field name → IDF column name)
 	binding.PropertyMappings = make(map[string]string)
-	binding.PropertyMappings["itemId"] = itemIdAttr      // "item_id"
-	binding.PropertyMappings["itemName"] = itemNameAttr   // "item_name"
-	binding.PropertyMappings["itemType"] = itemTypeAttr  // "item_type"
+	binding.PropertyMappings["itemId"] = itemIdAttr           // "item_id"
+	binding.PropertyMappings["itemName"] = itemNameAttr       // "item_name"
+	binding.PropertyMappings["itemType"] = itemTypeAttr       // "item_type"
 	binding.PropertyMappings["description"] = descriptionAttr // "description"
-	binding.PropertyMappings["extId"] = extIdAttr        // "ext_id"
+	binding.PropertyMappings["extId"] = extIdAttr             // "ext_id"
 
 	// Filterable properties (can be used in $filter)
 	filterProperties := make(map[string]bool)
@@ -266,6 +285,21 @@ func createItemEntityBinding() *edm.EdmEntityBinding {
 	entityType := new(edm.EdmEntityType)
 	entityType.Name = "item"
 	entityType.Properties = properties
+
+	// Add navigation properties for $expand
+	// associations is a navigation property that references ItemAssociation entity
+	var navigationProperties []*edm.EdmNavigationProperty
+	associationsNavProp := new(edm.EdmNavigationProperty)
+	associationsNavProp.Name = "associations"
+	associationsNavProp.IsCollection = true // It's an array/collection
+	associationsNavProp.Type = edm.GetFullQualifiedName(edm.NamespaceEntities, "itemassociation")
+	// Join keys use OData property names (camelCase), not IDF column names
+	// Item.extId (UUID) = ItemAssociation.itemId (UUID)
+	associationsNavProp.LeftEntityKey = "extId"   // OData property name in Item entity
+	associationsNavProp.RightEntityKey = "itemId" // OData property name in ItemAssociation entity
+	navigationProperties = append(navigationProperties, associationsNavProp)
+	entityType.NavigationProperties = navigationProperties
+
 	binding.EntityType = entityType
 
 	// Set Entity Set
@@ -274,8 +308,93 @@ func createItemEntityBinding() *edm.EdmEntityBinding {
 	entitySet.EntityType = edm.GetFullQualifiedName(edm.NamespaceEntities, "item")
 	entitySet.IncludeInServiceDocument = true
 	entitySet.TableName = itemEntityTypeName // "item"
+
+	// Add navigation property bindings for $expand
+	var navigationPropertyBindings []*edm.EdmNavigationPropertyBinding
+	associationsNavBinding := new(edm.EdmNavigationPropertyBinding)
+	associationsNavBinding.Path = "associations"
+	associationsNavBinding.Target = "itemassociationSet" // Target entity set name
+	navigationPropertyBindings = append(navigationPropertyBindings, associationsNavBinding)
+	entitySet.NavigationPropertyBindings = navigationPropertyBindings
+
 	binding.EntitySet = entitySet
 
 	return binding
 }
 
+// createItemAssociationEntityBinding creates an EDM binding for the ItemAssociation entity
+// This is used for $expand=associations queries
+func createItemAssociationEntityBinding() *edm.EdmEntityBinding {
+	binding := new(edm.EdmEntityBinding)
+
+	// Set Property Mappings (OData field name → IDF column name)
+	binding.PropertyMappings = make(map[string]string)
+	binding.PropertyMappings["itemId"] = "item_id"
+	binding.PropertyMappings["entityType"] = "entity_type"
+	binding.PropertyMappings["entityId"] = "entity_id"
+	binding.PropertyMappings["count"] = "count"
+
+	// Filterable properties
+	filterProperties := make(map[string]bool)
+	filterProperties["entityType"] = true
+	filterProperties["count"] = true
+
+	// Create properties for ItemAssociation entity
+	var properties []*edm.EdmProperty
+
+	// itemId property
+	itemIdProp := new(edm.EdmProperty)
+	itemIdProp.Name = "itemId"
+	itemIdProp.IsCollection = false
+	itemIdProp.Type = string(edm.EdmString)
+	itemIdProp.MappedName = binding.PropertyMappings["itemId"]
+	itemIdProp.IsFilterable = false
+	itemIdProp.IsSortable = false
+	properties = append(properties, itemIdProp)
+
+	// entityType property
+	entityTypeProp := new(edm.EdmProperty)
+	entityTypeProp.Name = "entityType"
+	entityTypeProp.IsCollection = false
+	entityTypeProp.Type = string(edm.EdmString)
+	entityTypeProp.MappedName = binding.PropertyMappings["entityType"]
+	entityTypeProp.IsFilterable = filterProperties["entityType"]
+	entityTypeProp.IsSortable = false
+	properties = append(properties, entityTypeProp)
+
+	// entityId property
+	entityIdProp := new(edm.EdmProperty)
+	entityIdProp.Name = "entityId"
+	entityIdProp.IsCollection = false
+	entityIdProp.Type = string(edm.EdmString)
+	entityIdProp.MappedName = binding.PropertyMappings["entityId"]
+	entityIdProp.IsFilterable = false
+	entityIdProp.IsSortable = false
+	properties = append(properties, entityIdProp)
+
+	// count property
+	countProp := new(edm.EdmProperty)
+	countProp.Name = "count"
+	countProp.IsCollection = false
+	countProp.Type = string(edm.EdmInt64)
+	countProp.MappedName = binding.PropertyMappings["count"]
+	countProp.IsFilterable = filterProperties["count"]
+	countProp.IsSortable = false
+	properties = append(properties, countProp)
+
+	// Set Entity Type
+	entityType := new(edm.EdmEntityType)
+	entityType.Name = "itemassociation" // Lowercase to match generated code
+	entityType.Properties = properties
+	binding.EntityType = entityType
+
+	// Set Entity Set
+	entitySet := new(edm.EdmEntitySet)
+	entitySet.Name = "itemassociationSet" // Match generated code format
+	entitySet.EntityType = edm.GetFullQualifiedName(edm.NamespaceEntities, "itemassociation")
+	entitySet.IncludeInServiceDocument = true // Can be accessed via expand
+	entitySet.TableName = "item_associations"
+	binding.EntitySet = entitySet
+
+	return binding
+}

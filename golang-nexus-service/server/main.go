@@ -11,9 +11,11 @@ import (
 
 	log "github.com/sirupsen/logrus"
 
+	"github.com/nutanix/ntnx-api-golang-nexus/golang-nexus-service/constants"
 	"github.com/nutanix/ntnx-api-golang-nexus/golang-nexus-service/db"
 	"github.com/nutanix/ntnx-api-golang-nexus/golang-nexus-service/external"
 	externalIdf "github.com/nutanix/ntnx-api-golang-nexus/golang-nexus-service/external/idf"
+	externalStatsGW "github.com/nutanix/ntnx-api-golang-nexus/golang-nexus-service/external/statsgw"
 	"github.com/nutanix/ntnx-api-golang-nexus/golang-nexus-service/grpc"
 	idfRepo "github.com/nutanix/ntnx-api-golang-nexus/golang-nexus-service/idf"
 	"github.com/nutanix/ntnx-api-golang-nexus/golang-nexus-service/utils/logging"
@@ -42,7 +44,18 @@ func main() {
 	// Initialize IDF client via singleton (following az-manager pattern)
 	log.Infof("Initializing IDF client: %s:%d", *idfHost, *idfPort)
 	idfClient := externalIdf.NewIdfClient(*idfHost, uint16(*idfPort))
-	external.SetSingletonServices(idfClient)
+
+	// Initialize statsGW client for GraphQL queries (for $expand)
+	statsGWClient, err := externalStatsGW.NewStatsGWClient(constants.StatsGWHost, constants.StatsGWPort)
+	if err != nil {
+		log.Warnf("Failed to initialize statsGW client (expand functionality may not work): %v", err)
+		// Continue without statsGW - expand queries will fail gracefully
+		external.SetSingletonServices(idfClient, nil)
+	} else {
+		log.Info("✅ StatsGW client initialized")
+		external.SetSingletonServices(idfClient, statsGWClient)
+	}
+
 	log.Info("✅ IDF client initialized via singleton")
 
 	// Create IDF repository (no client needed - uses singleton)

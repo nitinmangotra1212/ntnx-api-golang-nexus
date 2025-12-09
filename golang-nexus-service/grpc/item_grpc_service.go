@@ -7,17 +7,13 @@ package grpc
 
 import (
 	"context"
-	"fmt"
-	"strings"
 
 	pb "github.com/nutanix/ntnx-api-golang-nexus-pc/generated-code/protobuf/nexus/v4/config"
 	"github.com/nutanix/ntnx-api-golang-nexus/golang-nexus-service/db"
-	"github.com/nutanix/ntnx-api-golang-nexus/golang-nexus-service/models"
+	"github.com/nutanix/ntnx-api-golang-nexus/golang-nexus-service/utils/odata"
 	"github.com/nutanix/ntnx-api-golang-nexus/golang-nexus-service/utils/query"
 	responseUtils "github.com/nutanix/ntnx-api-golang-nexus/golang-nexus-service/utils/response"
 	log "github.com/sirupsen/logrus"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
 
 // ItemGrpcService implements the gRPC ItemService
@@ -42,13 +38,15 @@ func (s *ItemGrpcService) ListItems(ctx context.Context, req *pb.ListItemsArg) (
 
 	// Extract query parameters from context (OData params from HTTP request)
 	queryParams := query.ExtractQueryParamsFromContext(ctx)
+	log.Infof("📥 Extracted query params: Expand=%s, Filter=%s, Orderby=%s, Page=%d, Limit=%d", 
+		queryParams.Expand, queryParams.Filter, queryParams.Orderby, queryParams.Page, queryParams.Limit)
 
 	// Call repository to fetch items from IDF (with OData parsing)
 	items, totalCount, err := s.itemRepository.ListItems(queryParams)
 	if err != nil {
 		log.Errorf("❌ Failed to list items from IDF: %v", err)
-		// Handle OData parsing errors with user-friendly messages
-		return nil, handleODataError(err, queryParams)
+		// Handle OData parsing errors with AppMessage format
+		return nil, odata.HandleODataError(err, queryParams)
 	}
 
 	log.Debugf("gRPC: Retrieved %d items from IDF (total: %d)", len(items), totalCount)
@@ -69,58 +67,6 @@ func (s *ItemGrpcService) ListItems(ctx context.Context, req *pb.ListItemsArg) (
 	}
 
 	return response, nil
-}
-
-// handleODataError handles OData parsing errors and converts them to appropriate gRPC status errors
-func handleODataError(err error, queryParams *models.QueryParams) error {
-	if err == nil {
-		return nil
-	}
-
-	errStr := err.Error()
-
-	// Check if it's already a gRPC status error
-	if st, ok := status.FromError(err); ok {
-		return st.Err()
-	}
-
-	// Check for OData parsing errors
-	if strings.Contains(errStr, "invalid OData query") || strings.Contains(errStr, "parse") {
-		queryParam := ""
-		if queryParams.Filter != "" {
-			queryParam = fmt.Sprintf("$filter=%s", queryParams.Filter)
-		} else if queryParams.Orderby != "" {
-			queryParam = fmt.Sprintf("$orderby=%s", queryParams.Orderby)
-		} else if queryParams.Select != "" {
-			queryParam = fmt.Sprintf("$select=%s", queryParams.Select)
-		}
-
-		return status.Errorf(codes.InvalidArgument,
-			"Invalid OData query syntax in '%s': %v. Please check your expression.",
-			queryParam, err)
-	}
-
-	if strings.Contains(errStr, "property") && strings.Contains(errStr, "not found") {
-		return status.Errorf(codes.InvalidArgument,
-			"Unknown property in OData query: %v. Please check field names (itemId, itemName, itemType, extId).",
-			err)
-	}
-
-	if strings.Contains(errStr, "operator") || strings.Contains(errStr, "unsupported") {
-		return status.Errorf(codes.InvalidArgument,
-			"Unsupported operator in OData query: %v. Please check your expression.",
-			err)
-	}
-
-	if strings.Contains(errStr, "evaluate") || strings.Contains(errStr, "evaluation") {
-		return status.Errorf(codes.Internal,
-			"Failed to evaluate OData query: %v. Please try a simpler query.",
-			err)
-	}
-
-	// Generic error for unknown errors
-	return status.Errorf(codes.Internal,
-		"Failed to process query: %v", err)
 }
 
 // NOTE: The following methods (GetItem, CreateItem, UpdateItem, DeleteItem, GetItemAsync) are not yet
