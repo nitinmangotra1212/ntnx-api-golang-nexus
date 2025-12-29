@@ -89,5 +89,13 @@ func startGRPCServer(itemRepository db.ItemRepository, fileRepository db.FileRep
 	// Register FileService with gRPC server
 	grpcServer.RegisterFileService(fileService)
 
+	// Create and register CatService
+	catService := grpc.NewCatGrpcService()
+	grpcServer.RegisterCatService(catService)
+
+	// Create and register CatStatsService (separate service for /cats/stats)
+	catStatsService := grpc.NewCatStatsGrpcService()
+	grpcServer.RegisterCatStatsService(catStatsService)
+
 	grpcServer.Start(&waitGroup)
 }

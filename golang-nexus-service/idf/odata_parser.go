@@ -185,7 +185,7 @@ func constructIDFQuery(queryParams *models.QueryParams, idfQuery *insights_inter
 }
 
 // GetNexusEntityBindings returns EDM entity bindings for nexus module
-// This creates EDM bindings for Item and ItemAssociation entities
+// This creates EDM bindings for all entities: Item, ItemAssociation, Cat, CatStats, PetFood, PetCare
 // In a full implementation, these would be generated from YAML definitions
 func GetNexusEntityBindings() []*edm.EdmEntityBinding {
 	var entityBindingList []*edm.EdmEntityBinding
@@ -197,6 +197,10 @@ func GetNexusEntityBindings() []*edm.EdmEntityBinding {
 	// Create ItemAssociation entity binding (for $expand)
 	itemAssocBinding := createItemAssociationEntityBinding()
 	entityBindingList = append(entityBindingList, itemAssocBinding)
+
+	// Add Cat-related entity bindings (Cat, CatStats, PetFood, PetCare)
+	catBindings := GetCatEntityBindings()
+	entityBindingList = append(entityBindingList, catBindings...)
 
 	return entityBindingList
 }

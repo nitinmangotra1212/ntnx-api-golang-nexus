@@ -37,6 +37,10 @@ type Server interface {
 	RegisterItemService(itemService *ItemGrpcService)
 	// RegisterFileService registers the FileService with the gRPC server
 	RegisterFileService(fileService *FileGrpcService)
+	// RegisterCatService registers the CatService with the gRPC server
+	RegisterCatService(catService *CatGrpcService)
+	// RegisterCatStatsService registers the CatStatsService with the gRPC server
+	RegisterCatStatsService(catStatsService *CatStatsGrpcService)
 }
 
 type ServerImpl struct {
@@ -123,6 +127,20 @@ func (server *ServerImpl) RegisterItemService(itemService *ItemGrpcService) {
 func (server *ServerImpl) RegisterFileService(fileService *FileGrpcService) {
 	pb.RegisterFileServiceServer(server.gserver, fileService)
 	log.Info("Registered FileService with the gRPC server")
+}
+
+// RegisterCatService registers the CatService with the gRPC server
+// This is called from main.go after IDF is initialized
+func (server *ServerImpl) RegisterCatService(catService *CatGrpcService) {
+	pb.RegisterCatServiceServer(server.gserver, catService)
+	log.Info("Registered CatService with the gRPC server")
+}
+
+// RegisterCatStatsService registers the CatStatsService with the gRPC server
+// This is a SEPARATE service required because Java Adonis generates separate service for /cats/stats
+func (server *ServerImpl) RegisterCatStatsService(catStatsService *CatStatsGrpcService) {
+	pb.RegisterCatStatsServiceServer(server.gserver, catStatsService)
+	log.Info("Registered CatStatsService with the gRPC server")
 }
 
 // Start listening and serve. Errors are fatal (todo).
