@@ -58,7 +58,7 @@ replace github.com/nutanix/ntnx-api-golang-nexus-pc/generated-code/protobuf/comm
 replace github.com/nutanix/ntnx-api-golang-nexus-pc/generated-code/protobuf/common/v1/response => ../ntnx-api-golang-nexus-pc/generated-code/protobuf/common/v1/response
 
 // Use local clone of ntnx-api-utils-go
-replace github.com/nutanix-core/ntnx-api-utils-go => ../ntnx-api-utils-go
+replace github.com/nutanix-core/ntnx-api-utils-go => ../../ntnx-api-utils-go
 
 // Fix sarama dependency issue (same as az-manager and guru)
 replace github.com/Shopify/sarama => github.com/Shopify/sarama v1.17.0

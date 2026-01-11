@@ -69,12 +69,18 @@ func (e *GrpcStatusUtilImpl) BuildGrpcError(nexusErr nexusError.NexusErrorInterf
 	}
 
 	// Build AppMessage using errorutils
+	// Extract arguments map from protobuf
+	argsMap := make(map[string]string)
+	if appMsgPb := nexusErr.ConvertToAppMessagePb(); appMsgPb != nil && appMsgPb.GetArgumentsMap() != nil {
+		argsMap = appMsgPb.GetArgumentsMap().GetValue()
+	}
+	
 	appMessage, err := e.AppMessageBuilderInterface.BuildAppMessage(
 		constants.EnglishLocale,
 		constants.NexusNamespace,
 		constants.NexusErrorPrefix,
 		strconv.Itoa(nexusErr.GetErrorCode()),
-		nexusErr.ConvertToAppMessagePb().GetArgumentsMap().GetValue(),
+		argsMap,
 	)
 	if err != nil {
 		log.Errorf("Failed to build app message: %s", err)

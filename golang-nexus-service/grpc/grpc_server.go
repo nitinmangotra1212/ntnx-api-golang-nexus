@@ -35,6 +35,8 @@ type Server interface {
 	Stop()
 	// RegisterItemService registers the ItemService with the gRPC server
 	RegisterItemService(itemService *ItemGrpcService)
+	// RegisterFileService registers the FileService with the gRPC server
+	RegisterFileService(fileService *FileGrpcService)
 }
 
 type ServerImpl struct {
@@ -114,6 +116,13 @@ func (server *ServerImpl) registerServices() {
 func (server *ServerImpl) RegisterItemService(itemService *ItemGrpcService) {
 	pb.RegisterItemServiceServer(server.gserver, itemService)
 	log.Info("Registered ItemService with the gRPC server")
+}
+
+// RegisterFileService registers the FileService with the gRPC server
+// This is called from main.go after file repository is initialized
+func (server *ServerImpl) RegisterFileService(fileService *FileGrpcService) {
+	pb.RegisterFileServiceServer(server.gserver, fileService)
+	log.Info("Registered FileService with the gRPC server")
 }
 
 // Start listening and serve. Errors are fatal (todo).

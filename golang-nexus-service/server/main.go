@@ -62,14 +62,18 @@ func main() {
 	itemRepository := idfRepo.NewItemRepository()
 	log.Info("✅ IDF repository initialized")
 
-	// Start gRPC server with IDF
-	startGRPCServer(itemRepository)
+	// Create File repository
+	fileRepository := idfRepo.NewFileRepository()
+	log.Info("✅ File repository initialized")
+
+	// Start gRPC server with repositories
+	startGRPCServer(itemRepository, fileRepository)
 
 	// Wait for all goroutines to complete
 	waitGroup.Wait()
 }
 
-func startGRPCServer(itemRepository db.ItemRepository) {
+func startGRPCServer(itemRepository db.ItemRepository, fileRepository db.FileRepository) {
 	log.Info(fmt.Sprintf("Starting GRPC Server on port %v", *port))
 	grpcServer := grpc.NewServer(uint64(*port))
 
@@ -78,6 +82,12 @@ func startGRPCServer(itemRepository db.ItemRepository) {
 
 	// Register ItemService with gRPC server
 	grpcServer.RegisterItemService(itemService)
+
+	// Create FileService with file repository
+	fileService := grpc.NewFileGrpcService(fileRepository)
+
+	// Register FileService with gRPC server
+	grpcServer.RegisterFileService(fileService)
 
 	grpcServer.Start(&waitGroup)
 }
