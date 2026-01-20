@@ -59,6 +59,8 @@ github.com/nutanix-core/go-cache v0.0.0-20251014060132-91a71b98a157 h1:TjJZbgqez
 github.com/nutanix-core/go-cache v0.0.0-20251014060132-91a71b98a157/go.mod h1:rZZ71W0M06kgDEV0iouENaT4RiOHXTXCFj9B0ESxLEI=
 github.com/nutanix-core/ntnx-api-odata-go v1.0.27 h1:IEDzeoh/uZgD+g1ibSwBOV2EKzVIKOiEtB9v9UypK+U=
 github.com/nutanix-core/ntnx-api-odata-go v1.0.27/go.mod h1:Rnh9vyZb4msuXtbV7ChrOekxZcjgpCcYW6rceh97IYg=
+github.com/nutanix-core/ntnx-api-utils-go v1.0.26 h1:nzAis9S7dyhN16EI3kOiCKOqywN7JWYHKHbjfFoctBU=
+github.com/nutanix-core/ntnx-api-utils-go v1.0.26/go.mod h1:zwLvzc6nNc8FcomwDysjOWuXw1mJ4CCXRryUVPvdyJA=
 github.com/opentracing/opentracing-go v1.1.0/go.mod h1:UkNAQd3GIcIGf0SeVgPpRdFStlNbqXla1AfSYxPUl2o=
 github.com/pkg/errors v0.8.1/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINEl0=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
