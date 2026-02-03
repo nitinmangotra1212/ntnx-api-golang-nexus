@@ -7,12 +7,13 @@ require (
 	github.com/grpc-ecosystem/go-grpc-middleware v1.4.0
 	github.com/nutanix-core/go-cache v0.0.0-20251014060132-91a71b98a157
 	github.com/nutanix-core/ntnx-api-odata-go v1.0.27
-	github.com/nutanix-core/ntnx-api-utils-go v1.0.38
+	github.com/nutanix-core/ntnx-api-utils-go v1.0.39-0.20251112074403-7df0263d4bed
 	github.com/nutanix/ntnx-api-golang-nexus-pc/generated-code/dto v0.0.0
 	github.com/nutanix/ntnx-api-golang-nexus-pc/generated-code/protobuf/common/v1/config v0.0.0-00010101000000-000000000000
 	github.com/nutanix/ntnx-api-golang-nexus-pc/generated-code/protobuf/common/v1/response v0.0.0-00010101000000-000000000000
 	github.com/nutanix/ntnx-api-golang-nexus-pc/generated-code/protobuf/nexus/v4/config v0.0.0-00010101000000-000000000000
 	github.com/nutanix/ntnx-api-golang-nexus-pc/generated-code/protobuf/nexus/v4/error v0.0.0-00010101000000-000000000000
+	github.com/nutanix/ntnx-api-golang-nexus-pc/generated-code/protobuf/nexus/v4/stats v0.0.0-00010101000000-000000000000
 	github.com/sirupsen/logrus v1.9.3
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20251111163417-95abcf5c77ba
 	google.golang.org/grpc v1.77.0
@@ -53,6 +54,8 @@ replace github.com/nutanix/ntnx-api-golang-nexus-pc/generated-code/protobuf/nexu
 
 replace github.com/nutanix/ntnx-api-golang-nexus-pc/generated-code/protobuf/nexus/v4/error => ../ntnx-api-golang-nexus-pc/generated-code/protobuf/nexus/v4/error
 
+replace github.com/nutanix/ntnx-api-golang-nexus-pc/generated-code/protobuf/nexus/v4/stats => ../ntnx-api-golang-nexus-pc/generated-code/protobuf/nexus/v4/stats
+
 replace github.com/nutanix/ntnx-api-golang-nexus-pc/generated-code/protobuf/common/v1/config => ../ntnx-api-golang-nexus-pc/generated-code/protobuf/common/v1/config
 
 replace github.com/nutanix/ntnx-api-golang-nexus-pc/generated-code/protobuf/common/v1/response => ../ntnx-api-golang-nexus-pc/generated-code/protobuf/common/v1/response
@@ -62,3 +65,5 @@ replace github.com/nutanix-core/ntnx-api-utils-go => ../../ntnx-api-utils-go
 
 // Fix sarama dependency issue (same as az-manager and guru)
 replace github.com/Shopify/sarama => github.com/Shopify/sarama v1.17.0
+
+replace github.com/nutanix-core/ntnx-api-odata-go => /Users/nitin.mangotra/ntnx-api-odata-go

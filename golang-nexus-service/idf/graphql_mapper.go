@@ -191,7 +191,12 @@ func GenerateGraphQLQuery(queryParams *models.QueryParams, resourcePath string) 
 
 	// Parse OData query parameters
 	log.Debugf("Parsing OData query with expand: %s, resourcePath: %s", queryParams.Expand, resourcePath)
-	uriInfo, parseErr := odataParser.ParserWithQueryParam(queryParam, resourcePath)
+	parseParam := parser.ParseParam{
+		Namespace: "nexus",
+		Module:    "config", // For expand queries, use config module
+		Resource:  resourcePath,
+	}
+	uriInfo, parseErr := odataParser.ParserWithQueryParam(queryParam, parseParam)
 	if parseErr != nil {
 		log.Errorf("❌ Failed to Parse OData expression for GraphQL: %v", parseErr)
 		log.Errorf("   Expand parameter: %s", queryParams.Expand)
@@ -207,7 +212,7 @@ func GenerateGraphQLQuery(queryParams *models.QueryParams, resourcePath string) 
 
 	// Use GraphQL query evaluator
 	idfGraphqlQueryEval := idfgraphql.IdfGraphqlQueryEvaluator{}
-	graphqlQuery, err := idfGraphqlQueryEval.GetQuery(uriInfo, resourcePath)
+	graphqlQuery, err := idfGraphqlQueryEval.GetQuery(uriInfo, parseParam)
 	if err != nil {
 		log.Errorf("Failed to Evaluate GraphQL expression: %v", err)
 		return "", fmt.Errorf("failed to evaluate GraphQL query: %w", err)

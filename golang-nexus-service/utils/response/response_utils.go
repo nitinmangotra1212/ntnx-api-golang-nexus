@@ -14,6 +14,7 @@ import (
 	commonConfig "github.com/nutanix/ntnx-api-golang-nexus-pc/generated-code/protobuf/common/v1/config"
 	"github.com/nutanix/ntnx-api-golang-nexus-pc/generated-code/protobuf/common/v1/response"
 	pb "github.com/nutanix/ntnx-api-golang-nexus-pc/generated-code/protobuf/nexus/v4/config"
+	pbStats "github.com/nutanix/ntnx-api-golang-nexus-pc/generated-code/protobuf/nexus/v4/stats"
 	log "github.com/sirupsen/logrus"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/protobuf/proto"
@@ -183,6 +184,54 @@ func CreateListItemsResponse(items []*pb.Item, paginationLinks []*response.ApiLi
 			Data: &pb.ListItemsApiResponse_ItemArrayData{
 				ItemArrayData: &pb.ItemArrayWrapper{
 					Value: items,
+				},
+			},
+			Metadata: CreateResponseMetadata(false, isPaginated, paginationLinks, "", ""),
+		},
+	}
+	resp.Content.Metadata.TotalAvailableResults = proto.Int32(totalAvailableResults)
+	return resp
+}
+
+// CreateListItemsGroupResponse creates a response for ListItems API with GroupBy (ItemGroup objects)
+func CreateListItemsGroupResponse(itemGroups []*pb.ItemGroup, paginationLinks []*response.ApiLink, isPaginated bool, totalAvailableResults int32) *pb.ListItemsRet {
+	resp := &pb.ListItemsRet{
+		Content: &pb.ListItemsApiResponse{
+			Data: &pb.ListItemsApiResponse_ItemGroupArrayData{
+				ItemGroupArrayData: &pb.ItemGroupArrayWrapper{
+					Value: itemGroups,
+				},
+			},
+			Metadata: CreateResponseMetadata(false, isPaginated, paginationLinks, "", ""),
+		},
+	}
+	resp.Content.Metadata.TotalAvailableResults = proto.Int32(totalAvailableResults)
+	return resp
+}
+
+// CreateListItemStatsResponse creates a response for ListItemStats API with metadata
+func CreateListItemStatsResponse(stats []*pbStats.ItemStats, paginationLinks []*response.ApiLink, isPaginated bool, totalAvailableResults int32) *pbStats.ListItemStatsRet {
+	resp := &pbStats.ListItemStatsRet{
+		Content: &pbStats.ListItemStatsApiResponse{
+			Data: &pbStats.ListItemStatsApiResponse_ItemStatsArrayData{
+				ItemStatsArrayData: &pbStats.ItemStatsArrayWrapper{
+					Value: stats,
+				},
+			},
+			Metadata: CreateResponseMetadata(false, isPaginated, paginationLinks, "", ""),
+		},
+	}
+	resp.Content.Metadata.TotalAvailableResults = proto.Int32(totalAvailableResults)
+	return resp
+}
+
+// CreateListItemStatsGroupResponse creates a GroupBy response for ListItemStats API
+func CreateListItemStatsGroupResponse(itemGroups []*pbStats.ItemStatsGroup, paginationLinks []*response.ApiLink, isPaginated bool, totalAvailableResults int32) *pbStats.ListItemStatsRet {
+	resp := &pbStats.ListItemStatsRet{
+		Content: &pbStats.ListItemStatsApiResponse{
+			Data: &pbStats.ListItemStatsApiResponse_ItemStatsGroupArrayData{
+				ItemStatsGroupArrayData: &pbStats.ItemStatsGroupArrayWrapper{
+					Value: itemGroups,
 				},
 			},
 			Metadata: CreateResponseMetadata(false, isPaginated, paginationLinks, "", ""),

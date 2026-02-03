@@ -116,7 +116,45 @@ func ExtractQueryParamsFromContext(ctx context.Context) *models.QueryParams {
 		}
 	}
 
-	log.Infof("📥 Extracted query params: Page=%d, Limit=%d, Filter=%s, Expand=%s, Orderby=%s, Select=%s",
-		queryParams.Page, queryParams.Limit, queryParams.Filter, queryParams.Expand, queryParams.Orderby, queryParams.Select)
+	// Extract $apply - OData $apply parameter for GroupBy and Aggregations
+	// This may contain special characters like parentheses: groupby(itemType)
+	if apply := values.Get("$apply"); apply != "" {
+		queryParams.Apply = apply
+		log.Infof("✅ Extracted $apply parameter: %s", apply)
+	} else {
+		// Try to get it directly from the raw query string if Get() didn't work
+		// This might happen if the parameter contains special characters
+		if rawQuery := parsedURL.RawQuery; rawQuery != "" {
+			log.Infof("⚠️  $apply not found via Get(), checking raw query: %s", rawQuery)
+			// Try to extract $apply manually from raw query
+			if applyValues, ok := values["$apply"]; ok && len(applyValues) > 0 {
+				queryParams.Apply = applyValues[0]
+				log.Infof("✅ Extracted $apply from values map: %s", queryParams.Apply)
+			} else {
+				log.Warnf("❌ $apply parameter not found in query string. Available keys: %v", getKeys(values))
+				// Try manual extraction from raw query string
+				if strings.Contains(rawQuery, "$apply=") {
+					parts := strings.Split(rawQuery, "$apply=")
+					if len(parts) > 1 {
+						// Extract until next & or end of string
+						applyValue := parts[1]
+						if idx := strings.Index(applyValue, "&"); idx != -1 {
+							applyValue = applyValue[:idx]
+						}
+						// URL decode
+						if decoded, err := url.QueryUnescape(applyValue); err == nil {
+							queryParams.Apply = decoded
+							log.Infof("✅ Manually extracted $apply from raw query: %s", queryParams.Apply)
+						}
+					}
+				}
+			}
+		} else {
+			log.Warnf("❌ No raw query string available for $apply extraction")
+		}
+	}
+
+	log.Infof("📥 Extracted query params: Page=%d, Limit=%d, Filter=%s, Expand=%s, Orderby=%s, Select=%s, Apply=%s",
+		queryParams.Page, queryParams.Limit, queryParams.Filter, queryParams.Expand, queryParams.Orderby, queryParams.Select, queryParams.Apply)
 	return queryParams
 }

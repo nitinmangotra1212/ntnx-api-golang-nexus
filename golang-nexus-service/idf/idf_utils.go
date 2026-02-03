@@ -50,6 +50,38 @@ func CreateDataArg(name string, value interface{}) *idfIfc.AttributeDataArg {
 				ValueList: val,
 			},
 		}
+	case []int64:
+		// Convert []int64 to []int64 for IDF
+		dataValue.ValueType = &idfIfc.DataValue_Int64List_{
+			Int64List: &idfIfc.DataValue_Int64List{
+				ValueList: val,
+			},
+		}
+	case []float64:
+		// Convert []float64 to []double for IDF
+		dataValue.ValueType = &idfIfc.DataValue_DoubleList_{
+			DoubleList: &idfIfc.DataValue_DoubleList{
+				ValueList: val,
+			},
+		}
+	case []bool:
+		// Convert []bool to []bool for IDF
+		dataValue.ValueType = &idfIfc.DataValue_BoolList_{
+			BoolList: &idfIfc.DataValue_BoolList{
+				ValueList: val,
+			},
+		}
+	case []int32:
+		// Convert []int32 (byte) to []int64 for IDF
+		int64List := make([]int64, len(val))
+		for i, v := range val {
+			int64List[i] = int64(v)
+		}
+		dataValue.ValueType = &idfIfc.DataValue_Int64List_{
+			Int64List: &idfIfc.DataValue_Int64List{
+				ValueList: int64List,
+			},
+		}
 	default:
 		log.Errorf("Unsupported type for attribute %s: %T", name, value)
 		return nil

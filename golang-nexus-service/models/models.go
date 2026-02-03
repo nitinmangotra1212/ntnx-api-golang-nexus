@@ -11,6 +11,7 @@ type QueryParams struct {
 	Orderby string
 	Select  string
 	Expand  string
+	Apply   string // OData $apply parameter for GroupBy and Aggregations
 }
 
 type ItemEntity struct {

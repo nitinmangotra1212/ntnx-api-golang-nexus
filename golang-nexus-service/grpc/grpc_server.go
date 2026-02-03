@@ -24,6 +24,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	pb "github.com/nutanix/ntnx-api-golang-nexus-pc/generated-code/protobuf/nexus/v4/config"
+	pbStats "github.com/nutanix/ntnx-api-golang-nexus-pc/generated-code/protobuf/nexus/v4/stats"
 )
 
 const maxStackSize = 1 << 16
@@ -37,6 +38,8 @@ type Server interface {
 	RegisterItemService(itemService *ItemGrpcService)
 	// RegisterFileService registers the FileService with the gRPC server
 	RegisterFileService(fileService *FileGrpcService)
+	// RegisterItemStatsService registers the ItemStatsService with the gRPC server
+	RegisterItemStatsService(statsService *ItemStatsGrpcService)
 }
 
 type ServerImpl struct {
@@ -123,6 +126,13 @@ func (server *ServerImpl) RegisterItemService(itemService *ItemGrpcService) {
 func (server *ServerImpl) RegisterFileService(fileService *FileGrpcService) {
 	pb.RegisterFileServiceServer(server.gserver, fileService)
 	log.Info("Registered FileService with the gRPC server")
+}
+
+// RegisterItemStatsService registers the ItemStatsService with the gRPC server
+// This is called from main.go after stats repository is initialized
+func (server *ServerImpl) RegisterItemStatsService(statsService *ItemStatsGrpcService) {
+	pbStats.RegisterItemStatsServiceServer(server.gserver, statsService)
+	log.Info("Registered ItemStatsService with the gRPC server")
 }
 
 // Start listening and serve. Errors are fatal (todo).

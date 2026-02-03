@@ -38,10 +38,35 @@ func (s *ItemGrpcService) ListItems(ctx context.Context, req *pb.ListItemsArg) (
 
 	// Extract query parameters from context (OData params from HTTP request)
 	queryParams := query.ExtractQueryParamsFromContext(ctx)
-	log.Infof("📥 Extracted query params: Expand=%s, Filter=%s, Orderby=%s, Page=%d, Limit=%d", 
-		queryParams.Expand, queryParams.Filter, queryParams.Orderby, queryParams.Page, queryParams.Limit)
+	log.Infof("📥 Extracted query params: Expand=%s, Filter=%s, Orderby=%s, Page=%d, Limit=%d, Apply=%s",
+		queryParams.Expand, queryParams.Filter, queryParams.Orderby, queryParams.Page, queryParams.Limit, queryParams.Apply)
 
-	// Call repository to fetch items from IDF (with OData parsing)
+	// Handle GroupBy queries separately (they return ItemGroup objects)
+	if queryParams.Apply != "" {
+		log.Infof("🔀 GroupBy query detected: $apply=%s", queryParams.Apply)
+		itemGroups, totalCount, err := s.itemRepository.ListItemsWithGroupBy(queryParams)
+		if err != nil {
+			log.Errorf("❌ Failed to list items with GroupBy from IDF: %v", err)
+			return nil, odata.HandleODataError(err, queryParams)
+		}
+
+		log.Debugf("gRPC: Retrieved %d ItemGroups from IDF (total: %d)", len(itemGroups), totalCount)
+
+		// Determine if paginated
+		isPaginated := queryParams.Page > 0 || queryParams.Limit > 0
+
+		// Get pagination links
+		apiUrl := responseUtils.GetApiUrl(ctx, queryParams.Filter, queryParams.Expand, queryParams.Orderby, &queryParams.Limit, &queryParams.Page)
+		paginationLinks := responseUtils.GetPaginationLinks(totalCount, apiUrl)
+
+		// Create response with ItemGroup data
+		response := responseUtils.CreateListItemsGroupResponse(itemGroups, paginationLinks, isPaginated, int32(totalCount))
+
+		log.Infof("✅ gRPC: Returning %d ItemGroups with metadata (total: %d)", len(itemGroups), totalCount)
+		return response, nil
+	}
+
+	// Regular query (no GroupBy)
 	items, totalCount, err := s.itemRepository.ListItems(queryParams)
 	if err != nil {
 		log.Errorf("❌ Failed to list items from IDF: %v", err)
@@ -50,6 +75,63 @@ func (s *ItemGrpcService) ListItems(ctx context.Context, req *pb.ListItemsArg) (
 	}
 
 	log.Debugf("gRPC: Retrieved %d items from IDF (total: %d)", len(items), totalCount)
+
+	// Debug: Check if itemStats and list fields are set before creating response
+	itemStatsCount := 0
+	listFieldsCount := 0
+	for i, item := range items {
+		if item.ItemStats != nil {
+			itemStatsCount++
+			if i < 3 { // Log first 3 items with itemStats for debugging
+				log.Infof("🔍 [gRPC DEBUG] Item[%d] extId=%s has itemStats: statsExtId=%v, age=%v, heartRate=%v, foodIntake=%v",
+					i, item.GetExtId(), item.ItemStats.GetStatsExtId(), item.ItemStats.GetAge(), item.ItemStats.GetHeartRate(), item.ItemStats.GetFoodIntake())
+			}
+		}
+		
+		// Check for list fields
+		hasListFields := false
+		if item.StringList != nil && len(item.StringList.Value) > 0 {
+			hasListFields = true
+			if i < 3 {
+				log.Infof("🔍 [gRPC DEBUG] Item[%d] extId=%s has StringList: %v", i, item.GetExtId(), item.StringList.Value)
+			}
+		}
+		if item.Int64List != nil && len(item.Int64List.Value) > 0 {
+			hasListFields = true
+			if i < 3 {
+				log.Infof("🔍 [gRPC DEBUG] Item[%d] extId=%s has Int64List: %v", i, item.GetExtId(), item.Int64List.Value)
+			}
+		}
+		if item.FloatList != nil && len(item.FloatList.Value) > 0 {
+			hasListFields = true
+			if i < 3 {
+				log.Infof("🔍 [gRPC DEBUG] Item[%d] extId=%s has FloatList: %v", i, item.GetExtId(), item.FloatList.Value)
+			}
+		}
+		if item.BoolList != nil && len(item.BoolList.Value) > 0 {
+			hasListFields = true
+			if i < 3 {
+				log.Infof("🔍 [gRPC DEBUG] Item[%d] extId=%s has BoolList: %v", i, item.GetExtId(), item.BoolList.Value)
+			}
+		}
+		if item.ByteList != nil && len(item.ByteList.Value) > 0 {
+			hasListFields = true
+			if i < 3 {
+				log.Infof("🔍 [gRPC DEBUG] Item[%d] extId=%s has ByteList: %v", i, item.GetExtId(), item.ByteList.Value)
+			}
+		}
+		if item.EnumList != nil && len(item.EnumList.Value) > 0 {
+			hasListFields = true
+			if i < 3 {
+				log.Infof("🔍 [gRPC DEBUG] Item[%d] extId=%s has EnumList: %v", i, item.GetExtId(), item.EnumList.Value)
+			}
+		}
+		if hasListFields {
+			listFieldsCount++
+		}
+	}
+	log.Infof("🔍 [gRPC DEBUG] %d out of %d items have itemStats set before response creation", itemStatsCount, len(items))
+	log.Infof("🔍 [gRPC DEBUG] %d out of %d items have list fields set before response creation", listFieldsCount, len(items))
 
 	// Determine if paginated
 	isPaginated := queryParams.Page > 0 || queryParams.Limit > 0
@@ -60,6 +142,67 @@ func (s *ItemGrpcService) ListItems(ctx context.Context, req *pb.ListItemsArg) (
 
 	// Create response with metadata
 	response := responseUtils.CreateListItemsResponse(items, paginationLinks, isPaginated, int32(totalCount))
+
+	// Debug: Verify itemStats and list fields are still in response protobuf
+	if response != nil && response.Content != nil && response.Content.Data != nil {
+		if itemArrayData, ok := response.Content.Data.(*pb.ListItemsApiResponse_ItemArrayData); ok && itemArrayData.ItemArrayData != nil {
+			itemStatsCountAfter := 0
+			listFieldsCountAfter := 0
+			for i, item := range itemArrayData.ItemArrayData.Value {
+				if item.ItemStats != nil {
+					itemStatsCountAfter++
+					if i < 3 { // Log first 3 items with itemStats for debugging
+						log.Infof("🔍 [gRPC DEBUG] Response Item[%d] extId=%s has itemStats: statsExtId=%v",
+							i, item.GetExtId(), item.ItemStats.GetStatsExtId())
+					}
+				}
+				
+				// Check for list fields in response protobuf
+				hasListFields := false
+				if item.StringList != nil && len(item.StringList.Value) > 0 {
+					hasListFields = true
+					if i < 3 {
+						log.Infof("🔍 [gRPC DEBUG] Response Item[%d] extId=%s has StringList in protobuf: %v", i, item.GetExtId(), item.StringList.Value)
+					}
+				}
+				if item.Int64List != nil && len(item.Int64List.Value) > 0 {
+					hasListFields = true
+					if i < 3 {
+						log.Infof("🔍 [gRPC DEBUG] Response Item[%d] extId=%s has Int64List in protobuf: %v", i, item.GetExtId(), item.Int64List.Value)
+					}
+				}
+				if item.FloatList != nil && len(item.FloatList.Value) > 0 {
+					hasListFields = true
+					if i < 3 {
+						log.Infof("🔍 [gRPC DEBUG] Response Item[%d] extId=%s has FloatList in protobuf: %v", i, item.GetExtId(), item.FloatList.Value)
+					}
+				}
+				if item.BoolList != nil && len(item.BoolList.Value) > 0 {
+					hasListFields = true
+					if i < 3 {
+						log.Infof("🔍 [gRPC DEBUG] Response Item[%d] extId=%s has BoolList in protobuf: %v", i, item.GetExtId(), item.BoolList.Value)
+					}
+				}
+				if item.ByteList != nil && len(item.ByteList.Value) > 0 {
+					hasListFields = true
+					if i < 3 {
+						log.Infof("🔍 [gRPC DEBUG] Response Item[%d] extId=%s has ByteList in protobuf: %v", i, item.GetExtId(), item.ByteList.Value)
+					}
+				}
+				if item.EnumList != nil && len(item.EnumList.Value) > 0 {
+					hasListFields = true
+					if i < 3 {
+						log.Infof("🔍 [gRPC DEBUG] Response Item[%d] extId=%s has EnumList in protobuf: %v", i, item.GetExtId(), item.EnumList.Value)
+					}
+				}
+				if hasListFields {
+					listFieldsCountAfter++
+				}
+			}
+			log.Infof("🔍 [gRPC DEBUG] %d out of %d items have itemStats set in response protobuf", itemStatsCountAfter, len(itemArrayData.ItemArrayData.Value))
+			log.Infof("🔍 [gRPC DEBUG] %d out of %d items have list fields set in response protobuf", listFieldsCountAfter, len(itemArrayData.ItemArrayData.Value))
+		}
+	}
 
 	log.Infof("✅ gRPC: Returning %d items with metadata (total: %d)", len(items), totalCount)
 	if log.GetLevel() == log.DebugLevel {

@@ -9,6 +9,7 @@ type ItemRepository interface {
 	CreateItem(itemEntity *models.ItemEntity) error
 	GetItemById(extId string) (*models.ItemEntity, error)
 	ListItems(queryParams *models.QueryParams) ([]*pb.Item, int64, error)
+	ListItemsWithGroupBy(queryParams *models.QueryParams) ([]*pb.ItemGroup, int64, error)
 	UpdateItem(extId string, itemEntity *models.ItemEntity) error
 	DeleteItem(extId string) error
 }

@@ -7,6 +7,7 @@ package idf
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/nutanix-core/go-cache/insights/insights_interface"
 	idfQr "github.com/nutanix-core/go-cache/insights/insights_interface/query"
@@ -57,8 +58,26 @@ func GenerateListQuery(queryParams *models.QueryParams, resourcePath string,
 		queryParam.SetExpand(queryParams.Expand)
 	}
 
+	if queryParams.Apply != "" {
+		queryParam.SetApply(queryParams.Apply)
+		log.Debugf("Set $apply parameter: %s", queryParams.Apply)
+	}
+
 	// Parse OData query parameters
-	uriInfo, parseErr := odataParser.ParserWithQueryParam(queryParam, resourcePath)
+	// Note: Module should be "config" or "stats" (not entityName which is "item")
+	// The resourcePath is "/items" which becomes "items" after removing leading slash
+	// GetResourcePathFromParseParam concatenates: Namespace + Module + Resource
+	// Result: "nexus" + "config" + "items" = "nexusconfigitems" (for entity set lookup)
+	module := "config" // Default to config module
+	if strings.Contains(resourcePath, "stats") {
+		module = "stats"
+	}
+	parseParam := parser.ParseParam{
+		Namespace: "nexus",
+		Module:    module, // "config" or "stats" (not entityName)
+		Resource:  resourcePath,
+	}
+	uriInfo, parseErr := odataParser.ParserWithQueryParam(queryParam, parseParam)
 	if parseErr != nil {
 		log.Errorf("Failed to Parse OData expression: %v", parseErr)
 		// Return error with context for AppMessage formatting
@@ -76,11 +95,11 @@ func GenerateListQuery(queryParams *models.QueryParams, resourcePath string,
 		// For now, we still need IDF query for non-expanded fields
 		// The actual GraphQL execution happens in repository
 		idfQueryEval := idf.IDFQueryEvaluator{}
-		idfQuery, evalErr = idfQueryEval.GetQuery(uriInfo, resourcePath)
+		idfQuery, evalErr = idfQueryEval.GetQuery(uriInfo, parseParam)
 	} else {
 		log.Debugf("Using regular IDF query evaluator")
 		idfQueryEval := idf.IDFQueryEvaluator{}
-		idfQuery, evalErr = idfQueryEval.GetQuery(uriInfo, resourcePath)
+		idfQuery, evalErr = idfQueryEval.GetQuery(uriInfo, parseParam)
 	}
 
 	if evalErr != nil {
@@ -134,13 +153,65 @@ func constructIDFQuery(queryParams *models.QueryParams, idfQuery *insights_inter
 		query.GroupBy = &insights_interface.QueryGroupBy{}
 	}
 
+	// CRITICAL: Copy GroupByColumn from idfQuery if present (for $apply=groupby)
+	// This tells IDF which column to actually group by (e.g., "item_type")
+	// GetGroupByColumn() returns a string (not a pointer), so check if it's not empty
+	if idfQuery.GetGroupBy() != nil && idfQuery.GetGroupBy().GetGroupByColumn() != "" {
+		groupByCol := idfQuery.GetGroupBy().GetGroupByColumn()
+		query.GroupBy.GroupByColumn = &groupByCol
+		log.Infof("✅ Setting GroupBy column: %s", groupByCol)
+	}
+
+	// CRITICAL: Copy AggregateColumns from idfQuery if present (for aggregations)
+	// This tells IDF which aggregations to compute (e.g., sum, count, average)
+	if idfQuery.GetGroupBy() != nil && len(idfQuery.GetGroupBy().GetAggregateColumns()) > 0 {
+		query.GroupBy.AggregateColumns = idfQuery.GetGroupBy().GetAggregateColumns()
+		log.Infof("✅ Setting Aggregate columns: %d aggregations", len(query.GroupBy.AggregateColumns))
+	}
+
+	// List columns that should always be included
+	listColumns := []string{
+		"string_list", "int64_list", "float_list", "bool_list", "byte_list", "enum_list",
+	}
+	
 	// Use columns from IDF query evaluator (from OData $select)
 	if idfQuery.GetGroupBy() != nil && len(idfQuery.GetGroupBy().RawColumns) > 0 {
-		query.GroupBy.RawColumns = idfQuery.GetGroupBy().RawColumns
-		log.Debugf("Using OData $select columns: %+v", query.GroupBy.RawColumns)
+		// Start with columns from OData parser
+		rawColumns := idfQuery.GetGroupBy().RawColumns
+		
+		// Check which list columns are already included
+		existingColumns := make(map[string]bool)
+		for _, col := range rawColumns {
+			colName := col.GetColumn()
+			if colName != "" {
+				existingColumns[colName] = true
+			}
+		}
+		
+		// Add list columns if they're not already present
+		for _, listCol := range listColumns {
+			if !existingColumns[listCol] {
+				rawColumns = append(rawColumns, &insights_interface.QueryRawColumn{
+					Column: proto.String(listCol),
+				})
+				log.Infof("📋 [IDF QUERY] Added missing list column: %s", listCol)
+			}
+		}
+		
+		query.GroupBy.RawColumns = rawColumns
+		log.Infof("📋 [IDF QUERY] Using OData $select columns + list columns: %d total columns", len(rawColumns))
+		for i, col := range rawColumns {
+			log.Infof("📋 [IDF QUERY] Column %d: %s", i, col.GetColumn())
+		}
 	} else {
-		// Default: fetch all item columns
-		itemColumns := []string{itemIdAttr, itemNameAttr, itemTypeAttr, descriptionAttr, extIdAttr}
+		// Default: fetch all item columns (including new GroupBy and list fields)
+		itemColumns := []string{
+			itemIdAttr, itemNameAttr, itemTypeAttr, descriptionAttr, extIdAttr,
+			quantityAttr, priceAttr, isActiveAttr, priorityAttr, statusAttr,
+		}
+		// Add list columns
+		itemColumns = append(itemColumns, listColumns...)
+		
 		var rawColumns []*insights_interface.QueryRawColumn
 		for _, col := range itemColumns {
 			rawColumns = append(rawColumns, &insights_interface.QueryRawColumn{
@@ -148,7 +219,11 @@ func constructIDFQuery(queryParams *models.QueryParams, idfQuery *insights_inter
 			})
 		}
 		query.GroupBy.RawColumns = rawColumns
-		log.Debugf("Using default columns: %v", itemColumns)
+		log.Infof("📋 [IDF QUERY] Using default columns: %v", itemColumns)
+		log.Infof("📋 [IDF QUERY] RawColumns count: %d", len(rawColumns))
+		for i, col := range rawColumns {
+			log.Infof("📋 [IDF QUERY] Column %d: %s", i, col.GetColumn())
+		}
 	}
 
 	// Add sorting from OData $orderby
@@ -157,17 +232,26 @@ func constructIDFQuery(queryParams *models.QueryParams, idfQuery *insights_inter
 		log.Debugf("Using OData $orderby: %+v", query.GroupBy.RawSortOrder)
 	}
 
-	// Add pagination
-	offset := page * limit
-	limit64 := int64(limit)
-	offset64 := int64(offset)
+	// CRITICAL: Copy GroupLimit from idfQuery if present (for $apply group pagination)
+	// IDFApplyEvaluator sets GroupLimit for group-level pagination
+	if idfQuery.GetGroupBy() != nil && idfQuery.GetGroupBy().GetGroupLimit() != nil {
+		query.GroupBy.GroupLimit = idfQuery.GetGroupBy().GetGroupLimit()
+		log.Debugf("Using GroupLimit from $apply: limit=%d, offset=%d",
+			*idfQuery.GetGroupBy().GetGroupLimit().Limit,
+			*idfQuery.GetGroupBy().GetGroupLimit().Offset)
+	} else {
+		// Add pagination for regular queries (not GroupBy)
+		offset := page * limit
+		limit64 := int64(limit)
+		offset64 := int64(offset)
 
-	if query.GroupBy.RawLimit == nil {
-		query.GroupBy.RawLimit = &insights_interface.QueryLimit{}
+		if query.GroupBy.RawLimit == nil {
+			query.GroupBy.RawLimit = &insights_interface.QueryLimit{}
+		}
+
+		query.GroupBy.RawLimit.Limit = &limit64
+		query.GroupBy.RawLimit.Offset = &offset64
 	}
-
-	query.GroupBy.RawLimit.Limit = &limit64
-	query.GroupBy.RawLimit.Offset = &offset64
 
 	// Add filter from OData $filter
 	query.WhereClause = idfQuery.GetWhereClause()
@@ -198,6 +282,10 @@ func GetNexusEntityBindings() []*edm.EdmEntityBinding {
 	itemAssocBinding := createItemAssociationEntityBinding()
 	entityBindingList = append(entityBindingList, itemAssocBinding)
 
+	// Create ItemStats entity binding (for stats module)
+	itemStatsBinding := createItemStatsEntityBinding()
+	entityBindingList = append(entityBindingList, itemStatsBinding)
+
 	return entityBindingList
 }
 
@@ -214,6 +302,11 @@ func createItemEntityBinding() *edm.EdmEntityBinding {
 	binding.PropertyMappings["itemType"] = itemTypeAttr       // "item_type"
 	binding.PropertyMappings["description"] = descriptionAttr // "description"
 	binding.PropertyMappings["extId"] = extIdAttr             // "ext_id"
+	binding.PropertyMappings["quantity"] = quantityAttr       // "quantity"
+	binding.PropertyMappings["price"] = priceAttr             // "price"
+	binding.PropertyMappings["isActive"] = isActiveAttr       // "is_active"
+	binding.PropertyMappings["priority"] = priorityAttr       // "priority"
+	binding.PropertyMappings["status"] = statusAttr           // "status"
 
 	// Filterable properties (can be used in $filter)
 	filterProperties := make(map[string]bool)
@@ -221,12 +314,29 @@ func createItemEntityBinding() *edm.EdmEntityBinding {
 	filterProperties["itemName"] = true
 	filterProperties["itemType"] = true
 	filterProperties["extId"] = true
+	filterProperties["quantity"] = true
+	filterProperties["price"] = true
+	filterProperties["isActive"] = true
+	filterProperties["status"] = true
 
 	// Sortable properties (can be used in $orderby)
 	sortableProperties := make(map[string]bool)
 	sortableProperties["itemId"] = true
 	sortableProperties["itemName"] = true
 	sortableProperties["itemType"] = true
+	sortableProperties["quantity"] = true
+	sortableProperties["price"] = true
+	sortableProperties["priority"] = true
+
+	// Groupable properties (can be used in $apply=groupby)
+	groupableProperties := make(map[string]bool)
+	groupableProperties["itemType"] = true
+	groupableProperties["itemId"] = true
+	groupableProperties["quantity"] = true
+	groupableProperties["price"] = true
+	groupableProperties["isActive"] = true
+	groupableProperties["priority"] = true
+	groupableProperties["status"] = true
 
 	// Create properties for Item entity
 	var properties []*edm.EdmProperty
@@ -239,6 +349,7 @@ func createItemEntityBinding() *edm.EdmEntityBinding {
 	itemIdProp.MappedName = binding.PropertyMappings["itemId"]
 	itemIdProp.IsFilterable = filterProperties["itemId"]
 	itemIdProp.IsSortable = sortableProperties["itemId"]
+	itemIdProp.IsGroupable = groupableProperties["itemId"]
 	properties = append(properties, itemIdProp)
 
 	// itemName property
@@ -249,6 +360,7 @@ func createItemEntityBinding() *edm.EdmEntityBinding {
 	itemNameProp.MappedName = binding.PropertyMappings["itemName"]
 	itemNameProp.IsFilterable = filterProperties["itemName"]
 	itemNameProp.IsSortable = sortableProperties["itemName"]
+	itemNameProp.IsGroupable = false // itemName is not groupable
 	properties = append(properties, itemNameProp)
 
 	// itemType property
@@ -259,6 +371,7 @@ func createItemEntityBinding() *edm.EdmEntityBinding {
 	itemTypeProp.MappedName = binding.PropertyMappings["itemType"]
 	itemTypeProp.IsFilterable = filterProperties["itemType"]
 	itemTypeProp.IsSortable = sortableProperties["itemType"]
+	itemTypeProp.IsGroupable = groupableProperties["itemType"]
 	properties = append(properties, itemTypeProp)
 
 	// description property
@@ -269,6 +382,7 @@ func createItemEntityBinding() *edm.EdmEntityBinding {
 	descProp.MappedName = binding.PropertyMappings["description"]
 	descProp.IsFilterable = false // description is not filterable
 	descProp.IsSortable = false   // description is not sortable
+	descProp.IsGroupable = false  // description is not groupable
 	properties = append(properties, descProp)
 
 	// extId property
@@ -279,7 +393,63 @@ func createItemEntityBinding() *edm.EdmEntityBinding {
 	extIdProp.MappedName = binding.PropertyMappings["extId"]
 	extIdProp.IsFilterable = filterProperties["extId"]
 	extIdProp.IsSortable = false // extId is not sortable
+	extIdProp.IsGroupable = false
 	properties = append(properties, extIdProp)
+
+	// quantity property
+	quantityProp := new(edm.EdmProperty)
+	quantityProp.Name = "quantity"
+	quantityProp.IsCollection = false
+	quantityProp.Type = string(edm.EdmInt64)
+	quantityProp.MappedName = binding.PropertyMappings["quantity"]
+	quantityProp.IsFilterable = filterProperties["quantity"]
+	quantityProp.IsSortable = sortableProperties["quantity"]
+	quantityProp.IsGroupable = groupableProperties["quantity"]
+	properties = append(properties, quantityProp)
+
+	// price property
+	priceProp := new(edm.EdmProperty)
+	priceProp.Name = "price"
+	priceProp.IsCollection = false
+	priceProp.Type = string(edm.EdmDouble)
+	priceProp.MappedName = binding.PropertyMappings["price"]
+	priceProp.IsFilterable = filterProperties["price"]
+	priceProp.IsSortable = sortableProperties["price"]
+	priceProp.IsGroupable = groupableProperties["price"]
+	properties = append(properties, priceProp)
+
+	// isActive property
+	isActiveProp := new(edm.EdmProperty)
+	isActiveProp.Name = "isActive"
+	isActiveProp.IsCollection = false
+	isActiveProp.Type = string(edm.EdmBoolean)
+	isActiveProp.MappedName = binding.PropertyMappings["isActive"]
+	isActiveProp.IsFilterable = filterProperties["isActive"]
+	isActiveProp.IsSortable = false // boolean is typically not sortable
+	isActiveProp.IsGroupable = groupableProperties["isActive"]
+	properties = append(properties, isActiveProp)
+
+	// priority property
+	priorityProp := new(edm.EdmProperty)
+	priorityProp.Name = "priority"
+	priorityProp.IsCollection = false
+	priorityProp.Type = string(edm.EdmInt32) // Changed from EdmByte to EdmInt32
+	priorityProp.MappedName = binding.PropertyMappings["priority"]
+	priorityProp.IsFilterable = false // priority is not filterable
+	priorityProp.IsSortable = sortableProperties["priority"]
+	priorityProp.IsGroupable = groupableProperties["priority"]
+	properties = append(properties, priorityProp)
+
+	// status property
+	statusProp := new(edm.EdmProperty)
+	statusProp.Name = "status"
+	statusProp.IsCollection = false
+	statusProp.Type = string(edm.EdmString)
+	statusProp.MappedName = binding.PropertyMappings["status"]
+	statusProp.IsFilterable = filterProperties["status"]
+	statusProp.IsSortable = false // status is not sortable
+	statusProp.IsGroupable = groupableProperties["status"]
+	properties = append(properties, statusProp)
 
 	// Set Entity Type
 	entityType := new(edm.EdmEntityType)
@@ -298,23 +468,46 @@ func createItemEntityBinding() *edm.EdmEntityBinding {
 	associationsNavProp.LeftEntityKey = "extId"   // OData property name in Item entity
 	associationsNavProp.RightEntityKey = "itemId" // OData property name in ItemAssociation entity
 	navigationProperties = append(navigationProperties, associationsNavProp)
+	
+	// Navigation property: itemStats (ItemStats - stats module)
+	// Item.extId = ItemStats.itemExtId (one-to-many relationship)
+	itemStatsNavProp := new(edm.EdmNavigationProperty)
+	itemStatsNavProp.Name = "itemStats"
+	itemStatsNavProp.IsCollection = true // It's an array/collection (one item can have multiple stats records)
+	itemStatsNavProp.Type = edm.GetFullQualifiedName(edm.NamespaceEntities, "itemstats")
+	itemStatsNavProp.LeftEntityKey = "extId"      // OData property name in Item entity
+	itemStatsNavProp.RightEntityKey = "itemExtId" // OData property name in ItemStats entity
+	navigationProperties = append(navigationProperties, itemStatsNavProp)
+	
 	entityType.NavigationProperties = navigationProperties
 
 	binding.EntityType = entityType
 
 	// Set Entity Set
+	// Entity set name must match: Namespace + Module + Resource
+	// For ParseParam{Namespace: "nexus", Module: "config", Resource: "items"}
+	// The lookup name is: "nexus" + "config" + "items" = "nexusconfigitems"
 	entitySet := new(edm.EdmEntitySet)
-	entitySet.Name = "items"
+	entitySet.Name = "nexusconfigitems"
 	entitySet.EntityType = edm.GetFullQualifiedName(edm.NamespaceEntities, "item")
 	entitySet.IncludeInServiceDocument = true
 	entitySet.TableName = itemEntityTypeName // "item"
 
 	// Add navigation property bindings for $expand
 	var navigationPropertyBindings []*edm.EdmNavigationPropertyBinding
+	
+	// Navigation property: associations (ItemAssociation - config module)
 	associationsNavBinding := new(edm.EdmNavigationPropertyBinding)
 	associationsNavBinding.Path = "associations"
-	associationsNavBinding.Target = "itemassociationSet" // Target entity set name
+	associationsNavBinding.Target = "nexusconfigitemassociations" // Target entity set name (must match entity set name)
 	navigationPropertyBindings = append(navigationPropertyBindings, associationsNavBinding)
+	
+	// Navigation property: itemStats (ItemStats - stats module)
+	itemStatsNavBinding := new(edm.EdmNavigationPropertyBinding)
+	itemStatsNavBinding.Path = "itemStats"
+	itemStatsNavBinding.Target = "nexusstatsitemstats" // Target entity set name (stats module)
+	navigationPropertyBindings = append(navigationPropertyBindings, itemStatsNavBinding)
+	
 	entitySet.NavigationPropertyBindings = navigationPropertyBindings
 
 	binding.EntitySet = entitySet
@@ -389,11 +582,126 @@ func createItemAssociationEntityBinding() *edm.EdmEntityBinding {
 	binding.EntityType = entityType
 
 	// Set Entity Set
+	// Entity set name must match: Namespace + Module + Resource
+	// For ParseParam{Namespace: "nexus", Module: "config", Resource: "item-associations"}
+	// The lookup name is: "nexus" + "config" + "itemassociations" = "nexusconfigitemassociations"
+	// Note: Resource path "/item-associations" becomes "itemassociations" (hyphens removed)
 	entitySet := new(edm.EdmEntitySet)
-	entitySet.Name = "itemassociationSet" // Match generated code format
+	entitySet.Name = "nexusconfigitemassociations"
 	entitySet.EntityType = edm.GetFullQualifiedName(edm.NamespaceEntities, "itemassociation")
 	entitySet.IncludeInServiceDocument = true // Can be accessed via expand
 	entitySet.TableName = "item_associations"
+	binding.EntitySet = entitySet
+
+	return binding
+}
+
+// createItemStatsEntityBinding creates an EDM binding for the ItemStats entity (stats module)
+// This is used for /api/nexus/v4.1/stats/item-stats endpoint and $expand=itemStats from config module
+func createItemStatsEntityBinding() *edm.EdmEntityBinding {
+	binding := new(edm.EdmEntityBinding)
+
+	// Set Property Mappings (OData field name → IDF column name)
+	binding.PropertyMappings = make(map[string]string)
+	binding.PropertyMappings["statsExtId"] = "stats_ext_id"
+	binding.PropertyMappings["itemExtId"] = "item_ext_id"
+	binding.PropertyMappings["age"] = "age"
+	binding.PropertyMappings["heartRate"] = "heart_rate"
+	binding.PropertyMappings["foodIntake"] = "food_intake"
+
+	// Filterable properties
+	filterProperties := make(map[string]bool)
+	filterProperties["itemExtId"] = true
+	filterProperties["age"] = true
+	filterProperties["heartRate"] = true
+	filterProperties["foodIntake"] = true
+
+	// Sortable properties
+	sortableProperties := make(map[string]bool)
+	sortableProperties["itemExtId"] = true
+	sortableProperties["age"] = true
+	sortableProperties["heartRate"] = true
+	sortableProperties["foodIntake"] = true
+
+	// Groupable properties
+	groupableProperties := make(map[string]bool)
+	groupableProperties["itemExtId"] = true
+	groupableProperties["age"] = true
+	groupableProperties["heartRate"] = true
+	groupableProperties["foodIntake"] = true
+
+	// Create properties for ItemStats entity
+	var properties []*edm.EdmProperty
+
+	// statsExtId property (primary key)
+	statsExtIdProp := new(edm.EdmProperty)
+	statsExtIdProp.Name = "statsExtId"
+	statsExtIdProp.IsCollection = false
+	statsExtIdProp.Type = string(edm.EdmString)
+	statsExtIdProp.MappedName = binding.PropertyMappings["statsExtId"]
+	statsExtIdProp.IsFilterable = false
+	statsExtIdProp.IsSortable = false
+	properties = append(properties, statsExtIdProp)
+
+	// itemExtId property (foreign key to Item.extId)
+	itemExtIdProp := new(edm.EdmProperty)
+	itemExtIdProp.Name = "itemExtId"
+	itemExtIdProp.IsCollection = false
+	itemExtIdProp.Type = string(edm.EdmString)
+	itemExtIdProp.MappedName = binding.PropertyMappings["itemExtId"]
+	itemExtIdProp.IsFilterable = filterProperties["itemExtId"]
+	itemExtIdProp.IsSortable = sortableProperties["itemExtId"]
+	itemExtIdProp.IsGroupable = groupableProperties["itemExtId"]
+	properties = append(properties, itemExtIdProp)
+
+	// age property
+	ageProp := new(edm.EdmProperty)
+	ageProp.Name = "age"
+	ageProp.IsCollection = false
+	ageProp.Type = string(edm.EdmInt32)
+	ageProp.MappedName = binding.PropertyMappings["age"]
+	ageProp.IsFilterable = filterProperties["age"]
+	ageProp.IsSortable = sortableProperties["age"]
+	ageProp.IsGroupable = groupableProperties["age"]
+	properties = append(properties, ageProp)
+
+	// heartRate property
+	heartRateProp := new(edm.EdmProperty)
+	heartRateProp.Name = "heartRate"
+	heartRateProp.IsCollection = false
+	heartRateProp.Type = string(edm.EdmInt32)
+	heartRateProp.MappedName = binding.PropertyMappings["heartRate"]
+	heartRateProp.IsFilterable = filterProperties["heartRate"]
+	heartRateProp.IsSortable = sortableProperties["heartRate"]
+	heartRateProp.IsGroupable = groupableProperties["heartRate"]
+	properties = append(properties, heartRateProp)
+
+	// foodIntake property
+	foodIntakeProp := new(edm.EdmProperty)
+	foodIntakeProp.Name = "foodIntake"
+	foodIntakeProp.IsCollection = false
+	foodIntakeProp.Type = string(edm.EdmDouble)
+	foodIntakeProp.MappedName = binding.PropertyMappings["foodIntake"]
+	foodIntakeProp.IsFilterable = filterProperties["foodIntake"]
+	foodIntakeProp.IsSortable = sortableProperties["foodIntake"]
+	foodIntakeProp.IsGroupable = groupableProperties["foodIntake"]
+	properties = append(properties, foodIntakeProp)
+
+	// Set Entity Type
+	entityType := new(edm.EdmEntityType)
+	entityType.Name = "itemstats" // Lowercase to match generated code
+	entityType.Properties = properties
+	binding.EntityType = entityType
+
+	// Set Entity Set
+	// Entity set name must match: Namespace + Module + Resource
+	// For ParseParam{Namespace: "nexus", Module: "stats", Resource: "item-stats"}
+	// The lookup name is: "nexus" + "stats" + "itemstats" = "nexusstatsitemstats"
+	entitySet := new(edm.EdmEntitySet)
+	entitySet.Name = "nexusstatsitemstats"
+	entitySet.EntityType = edm.GetFullQualifiedName(edm.NamespaceEntities, "itemstats")
+	entitySet.IncludeInServiceDocument = true
+	entitySet.TableName = "item_stats" // IDF table name
 	binding.EntitySet = entitySet
 
 	return binding
