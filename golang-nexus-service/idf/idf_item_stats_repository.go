@@ -258,26 +258,31 @@ func (r *ItemStatsRepositoryImpl) mapIdfAttributeToItemStats(entity *insights_in
 				}
 			}
 		case "age":
+			// Note: Time-series metrics are now arrays of time-value pairs
+			// This function receives Entity (not EntityWithMetric), so we can't extract all time-series values here
+			// For now, leave as nil - the stats module endpoint may need to be updated to use EntityWithMetric
+			// TODO: Update stats module to use EntityWithMetric to get all time-series values with timestamps
 			if attr.GetValue() != nil {
 				if intVal := attr.GetValue().GetInt64Value(); intVal != 0 {
-					age32 := int32(intVal)
-					stat.Age = &age32
-					log.Debugf("  Mapped age: %d", age32)
+					log.Debugf("  Skipped age: %d (time-series metrics require EntityWithMetric for timestamps)", intVal)
 				}
 			}
 		case "heart_rate":
+			// Note: Time-series metrics are now arrays of time-value pairs
+			// This function receives Entity (not EntityWithMetric), so we can't extract all time-series values here
+			// For now, leave as nil - the stats module endpoint may need to be updated to use EntityWithMetric
 			if attr.GetValue() != nil {
 				if intVal := attr.GetValue().GetInt64Value(); intVal != 0 {
-					heartRate32 := int32(intVal)
-					stat.HeartRate = &heartRate32
-					log.Debugf("  Mapped heart_rate: %d", heartRate32)
+					log.Debugf("  Skipped heart_rate: %d (time-series metrics require EntityWithMetric for timestamps)", intVal)
 				}
 			}
 		case "food_intake":
+			// Note: Time-series metrics are now arrays of time-value pairs
+			// This function receives Entity (not EntityWithMetric), so we can't extract all time-series values here
+			// For now, leave as nil - the stats module endpoint may need to be updated to use EntityWithMetric
 			if attr.GetValue() != nil {
 				if doubleVal := attr.GetValue().GetDoubleValue(); doubleVal != 0 {
-					stat.FoodIntake = &doubleVal
-					log.Debugf("  Mapped food_intake: %f", doubleVal)
+					log.Debugf("  Skipped food_intake: %f (time-series metrics require EntityWithMetric for timestamps)", doubleVal)
 				}
 			}
 		}

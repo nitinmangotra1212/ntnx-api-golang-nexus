@@ -87,43 +87,13 @@ func (s *ItemGrpcService) ListItems(ctx context.Context, req *pb.ListItemsArg) (
 					i, item.GetExtId(), item.ItemStats.GetStatsExtId(), item.ItemStats.GetAge(), item.ItemStats.GetHeartRate(), item.ItemStats.GetFoodIntake())
 			}
 		}
-		
-		// Check for list fields
+
+		// Check for list fields (only int64List now)
 		hasListFields := false
-		if item.StringList != nil && len(item.StringList.Value) > 0 {
-			hasListFields = true
-			if i < 3 {
-				log.Infof("🔍 [gRPC DEBUG] Item[%d] extId=%s has StringList: %v", i, item.GetExtId(), item.StringList.Value)
-			}
-		}
 		if item.Int64List != nil && len(item.Int64List.Value) > 0 {
 			hasListFields = true
 			if i < 3 {
 				log.Infof("🔍 [gRPC DEBUG] Item[%d] extId=%s has Int64List: %v", i, item.GetExtId(), item.Int64List.Value)
-			}
-		}
-		if item.FloatList != nil && len(item.FloatList.Value) > 0 {
-			hasListFields = true
-			if i < 3 {
-				log.Infof("🔍 [gRPC DEBUG] Item[%d] extId=%s has FloatList: %v", i, item.GetExtId(), item.FloatList.Value)
-			}
-		}
-		if item.BoolList != nil && len(item.BoolList.Value) > 0 {
-			hasListFields = true
-			if i < 3 {
-				log.Infof("🔍 [gRPC DEBUG] Item[%d] extId=%s has BoolList: %v", i, item.GetExtId(), item.BoolList.Value)
-			}
-		}
-		if item.ByteList != nil && len(item.ByteList.Value) > 0 {
-			hasListFields = true
-			if i < 3 {
-				log.Infof("🔍 [gRPC DEBUG] Item[%d] extId=%s has ByteList: %v", i, item.GetExtId(), item.ByteList.Value)
-			}
-		}
-		if item.EnumList != nil && len(item.EnumList.Value) > 0 {
-			hasListFields = true
-			if i < 3 {
-				log.Infof("🔍 [gRPC DEBUG] Item[%d] extId=%s has EnumList: %v", i, item.GetExtId(), item.EnumList.Value)
 			}
 		}
 		if hasListFields {
@@ -154,45 +124,31 @@ func (s *ItemGrpcService) ListItems(ctx context.Context, req *pb.ListItemsArg) (
 					if i < 3 { // Log first 3 items with itemStats for debugging
 						log.Infof("🔍 [gRPC DEBUG] Response Item[%d] extId=%s has itemStats: statsExtId=%v",
 							i, item.GetExtId(), item.ItemStats.GetStatsExtId())
+						// Check if time-value pair arrays are set
+						if item.ItemStats.GetAge() != nil && len(item.ItemStats.GetAge().GetValue()) > 0 {
+							log.Infof("  ✅ age has %d time-value pairs", len(item.ItemStats.GetAge().GetValue()))
+						} else {
+							log.Warnf("  ⚠️  age is nil or empty")
+						}
+						if item.ItemStats.GetHeartRate() != nil && len(item.ItemStats.GetHeartRate().GetValue()) > 0 {
+							log.Infof("  ✅ heartRate has %d time-value pairs", len(item.ItemStats.GetHeartRate().GetValue()))
+						} else {
+							log.Warnf("  ⚠️  heartRate is nil or empty")
+						}
+						if item.ItemStats.GetFoodIntake() != nil && len(item.ItemStats.GetFoodIntake().GetValue()) > 0 {
+							log.Infof("  ✅ foodIntake has %d time-value pairs", len(item.ItemStats.GetFoodIntake().GetValue()))
+						} else {
+							log.Warnf("  ⚠️  foodIntake is nil or empty")
+						}
 					}
 				}
-				
-				// Check for list fields in response protobuf
+
+				// Check for list fields in response protobuf (only int64List now)
 				hasListFields := false
-				if item.StringList != nil && len(item.StringList.Value) > 0 {
-					hasListFields = true
-					if i < 3 {
-						log.Infof("🔍 [gRPC DEBUG] Response Item[%d] extId=%s has StringList in protobuf: %v", i, item.GetExtId(), item.StringList.Value)
-					}
-				}
 				if item.Int64List != nil && len(item.Int64List.Value) > 0 {
 					hasListFields = true
 					if i < 3 {
 						log.Infof("🔍 [gRPC DEBUG] Response Item[%d] extId=%s has Int64List in protobuf: %v", i, item.GetExtId(), item.Int64List.Value)
-					}
-				}
-				if item.FloatList != nil && len(item.FloatList.Value) > 0 {
-					hasListFields = true
-					if i < 3 {
-						log.Infof("🔍 [gRPC DEBUG] Response Item[%d] extId=%s has FloatList in protobuf: %v", i, item.GetExtId(), item.FloatList.Value)
-					}
-				}
-				if item.BoolList != nil && len(item.BoolList.Value) > 0 {
-					hasListFields = true
-					if i < 3 {
-						log.Infof("🔍 [gRPC DEBUG] Response Item[%d] extId=%s has BoolList in protobuf: %v", i, item.GetExtId(), item.BoolList.Value)
-					}
-				}
-				if item.ByteList != nil && len(item.ByteList.Value) > 0 {
-					hasListFields = true
-					if i < 3 {
-						log.Infof("🔍 [gRPC DEBUG] Response Item[%d] extId=%s has ByteList in protobuf: %v", i, item.GetExtId(), item.ByteList.Value)
-					}
-				}
-				if item.EnumList != nil && len(item.EnumList.Value) > 0 {
-					hasListFields = true
-					if i < 3 {
-						log.Infof("🔍 [gRPC DEBUG] Response Item[%d] extId=%s has EnumList in protobuf: %v", i, item.GetExtId(), item.EnumList.Value)
 					}
 				}
 				if hasListFields {

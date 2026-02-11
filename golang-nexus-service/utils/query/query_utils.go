@@ -98,15 +98,68 @@ func ExtractQueryParamsFromContext(ctx context.Context) *models.QueryParams {
 				if strings.Contains(rawQuery, "$expand=") {
 					parts := strings.Split(rawQuery, "$expand=")
 					if len(parts) > 1 {
-						// Extract until next & or end of string
+						// Extract until next & or $ (which indicates a new parameter) or end of string
+						// BUT: $ can appear inside $expand value (e.g., $startTime), so we need to track parentheses
 						expandValue := parts[1]
-						if idx := strings.Index(expandValue, "&"); idx != -1 {
-							expandValue = expandValue[:idx]
+						log.Infof("🔍 [ExtractQueryParams] Raw expandValue after split: %s", expandValue)
+						
+						// Track parentheses depth to know if we're inside nested parameters
+						// Only stop at $ if we're outside all parentheses
+						parenDepth := 0
+						endIdx := len(expandValue)
+						
+						for i := 0; i < len(expandValue); i++ {
+							char := expandValue[i]
+							if char == '(' {
+								parenDepth++
+								log.Debugf("🔍 [ExtractQueryParams] Found '(' at index %d, parenDepth=%d", i, parenDepth)
+							} else if char == ')' {
+								parenDepth--
+								log.Debugf("🔍 [ExtractQueryParams] Found ')' at index %d, parenDepth=%d", i, parenDepth)
+								if parenDepth == 0 {
+									// Found matching closing paren - check if there's more after it
+									// If next char is & or $ (outside parens), stop here
+									if i+1 < len(expandValue) {
+										nextChar := expandValue[i+1]
+										if nextChar == '&' || nextChar == '$' {
+											endIdx = i + 1
+											log.Infof("🔍 [ExtractQueryParams] Found end at index %d (after ')' followed by '%c')", endIdx, nextChar)
+											break
+										}
+									} else {
+										// End of string after ')'
+										endIdx = i + 1
+										log.Infof("🔍 [ExtractQueryParams] Found end at index %d (end of string after ')')", endIdx)
+										break
+									}
+								}
+							} else if parenDepth == 0 && char == '&' {
+								// Outside parentheses, found & - this is a new parameter
+								endIdx = i
+								log.Infof("🔍 [ExtractQueryParams] Found end at index %d (outside parens, found '&')", endIdx)
+								break
+							} else if parenDepth == 0 && char == '$' {
+								// Outside parentheses, found $ - this might be a new parameter
+								// But check if it's at the start of a new parameter (not part of current expand)
+								// If we're at depth 0 and see $, it's likely a new parameter
+								endIdx = i
+								log.Infof("🔍 [ExtractQueryParams] Found end at index %d (outside parens, found '$')", endIdx)
+								break
+							}
 						}
+						
+						log.Infof("🔍 [ExtractQueryParams] Extracted expandValue: %s (length: %d, endIdx: %d)", expandValue[:endIdx], len(expandValue), endIdx)
+						expandValue = expandValue[:endIdx]
+						
 						// URL decode
 						if decoded, err := url.QueryUnescape(expandValue); err == nil {
 							queryParams.Expand = decoded
 							log.Infof("✅ Manually extracted $expand from raw query: %s", queryParams.Expand)
+						} else {
+							log.Warnf("⚠️  Failed to URL decode $expand value: %s, error: %v", expandValue, err)
+							// Use raw value if decoding fails
+							queryParams.Expand = expandValue
+							log.Infof("✅ Using raw $expand value (decoding failed): %s", queryParams.Expand)
 						}
 					}
 				}
