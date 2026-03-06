@@ -24,6 +24,9 @@ const (
 	HasError          = "hasError"
 	IsPaginated       = "isPaginated"
 	EnvoyOriginalPath = "x-envoy-original-path" // Header used by Envoy/Adonis for original path
+	// Fallback path headers when Envoy path is not set (e.g. grpc-gateway, direct gateway)
+	GrpcGatewayPath = "grpcgateway-http-path"
+	PathHeader      = ":path"
 )
 
 // CreateResponseMetadata creates metadata with flags and links
@@ -102,11 +105,18 @@ func GetApiUrl(ctx context.Context, filter, expand, orderby string, limit, page 
 	return apiUrl
 }
 
-// GetPathFromGrpcContext extracts the original path from gRPC context metadata
+// pathMetadataKeys lists metadata keys to try for extracting the request path (with query string).
+// Order matters: Envoy/Adonis use x-envoy-original-path; grpc-gateway may use others.
+var pathMetadataKeys = []string{EnvoyOriginalPath, GrpcGatewayPath, PathHeader}
+
+// GetPathFromGrpcContext extracts the original path from gRPC context metadata.
+// Tries multiple keys so pagination params ($limit, $page) are available when the
+// proxy uses different header names.
 func GetPathFromGrpcContext(ctx context.Context) string {
-	uriPath := GetVariableFromGrpcContext(ctx, EnvoyOriginalPath)
-	if len(uriPath) > 0 {
-		return uriPath[0]
+	for _, key := range pathMetadataKeys {
+		if vals := GetVariableFromGrpcContext(ctx, key); len(vals) > 0 && vals[0] != "" {
+			return vals[0]
+		}
 	}
 	return ""
 }

@@ -62,7 +62,7 @@ func (s *ItemGrpcService) ListItems(ctx context.Context, req *pb.ListItemsArg) (
 		// Create response with ItemGroup data
 		response := responseUtils.CreateListItemsGroupResponse(itemGroups, paginationLinks, isPaginated, int32(totalCount))
 
-		log.Infof("✅ gRPC: Returning %d ItemGroups with metadata (total: %d)", len(itemGroups), totalCount)
+		log.Infof("✅ gRPC: Returning %d ItemGroups with metadata (totalAvailableResults: %d groups)", len(itemGroups), totalCount)
 		return response, nil
 	}
 
@@ -83,8 +83,8 @@ func (s *ItemGrpcService) ListItems(ctx context.Context, req *pb.ListItemsArg) (
 		if item.ItemStats != nil {
 			itemStatsCount++
 			if i < 3 { // Log first 3 items with itemStats for debugging
-				log.Infof("🔍 [gRPC DEBUG] Item[%d] extId=%s has itemStats: statsExtId=%v, age=%v, heartRate=%v, foodIntake=%v",
-					i, item.GetExtId(), item.ItemStats.GetStatsExtId(), item.ItemStats.GetAge(), item.ItemStats.GetHeartRate(), item.ItemStats.GetFoodIntake())
+				log.Infof("🔍 [gRPC DEBUG] Item[%d] extId=%s has itemStats: age=%v, heartRate=%v, foodIntake=%v, timestamp=%v, speed=%v",
+					i, item.GetExtId(), item.ItemStats.GetAge(), item.ItemStats.GetHeartRate(), item.ItemStats.GetFoodIntake(), item.ItemStats.GetTimestamp(), item.ItemStats.GetSpeed())
 			}
 		}
 
@@ -122,8 +122,8 @@ func (s *ItemGrpcService) ListItems(ctx context.Context, req *pb.ListItemsArg) (
 				if item.ItemStats != nil {
 					itemStatsCountAfter++
 					if i < 3 { // Log first 3 items with itemStats for debugging
-						log.Infof("🔍 [gRPC DEBUG] Response Item[%d] extId=%s has itemStats: statsExtId=%v",
-							i, item.GetExtId(), item.ItemStats.GetStatsExtId())
+						log.Infof("🔍 [gRPC DEBUG] Response Item[%d] extId=%s has itemStats",
+							i, item.GetExtId())
 						// Check if time-value pair arrays are set
 						if item.ItemStats.GetAge() != nil && len(item.ItemStats.GetAge().GetValue()) > 0 {
 							log.Infof("  ✅ age has %d time-value pairs", len(item.ItemStats.GetAge().GetValue()))
