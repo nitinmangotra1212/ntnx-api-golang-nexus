@@ -19,6 +19,7 @@ import (
 	idfQr "github.com/nutanix-core/go-cache/insights/insights_interface/query"
 	pb "github.com/nutanix/ntnx-api-golang-nexus-pc/generated-code/protobuf/nexus/v4/config"
 	statsPb "github.com/nutanix/ntnx-api-golang-nexus-pc/generated-code/protobuf/nexus/v4/stats"
+	"github.com/nutanix/ntnx-api-golang-nexus-pc/generated-code/protobuf/common/v1/response"
 	"github.com/nutanix/ntnx-api-golang-nexus/golang-nexus-service/db"
 	"github.com/nutanix/ntnx-api-golang-nexus/golang-nexus-service/external"
 	"github.com/nutanix/ntnx-api-golang-nexus/golang-nexus-service/models"
@@ -49,6 +50,54 @@ const (
 	// List attributes
 	int64ListAttr = "int64_list"
 )
+
+// ItemType enum mappings:
+//   IDF stores int64 (1,2,3,4) via x-property-mapping
+//   Proto enum uses indexes (2001,2002,2003,2004) via x-codegen-hint
+var (
+	idfToProtoItemType = map[int64]pb.ItemTypeMessage_ItemType{
+		1: pb.ItemTypeMessage_TYPE1,
+		2: pb.ItemTypeMessage_TYPE2,
+		3: pb.ItemTypeMessage_UNKNOWN,
+		4: pb.ItemTypeMessage_REDACTED,
+	}
+	protoToIdfItemType = map[pb.ItemTypeMessage_ItemType]int64{
+		pb.ItemTypeMessage_TYPE1:    1,
+		pb.ItemTypeMessage_TYPE2:    2,
+		pb.ItemTypeMessage_UNKNOWN:  3,
+		pb.ItemTypeMessage_REDACTED: 4,
+	}
+	itemTypeEnumToString = map[int64]string{
+		1: "TYPE1",
+		2: "TYPE2",
+		3: "$UNKNOWN",
+		4: "$REDACTED",
+	}
+)
+
+// resolveItemTypeProto converts an IDF int64 value to the protobuf enum value.
+func resolveItemTypeProto(idfValue int64) pb.ItemTypeMessage_ItemType {
+	if enumVal, ok := idfToProtoItemType[idfValue]; ok {
+		return enumVal
+	}
+	return pb.ItemTypeMessage_UNKNOWN
+}
+
+// resolveItemTypeLabel converts an IDF int64 value to the string enum label (for group keys).
+func resolveItemTypeLabel(intValue int64) string {
+	if label, ok := itemTypeEnumToString[intValue]; ok {
+		return label
+	}
+	return "$UNKNOWN"
+}
+
+// resolveItemTypeIdfValue converts a proto enum value to the IDF int64 storage value.
+func resolveItemTypeIdfValue(enumVal pb.ItemTypeMessage_ItemType) int64 {
+	if val, ok := protoToIdfItemType[enumVal]; ok {
+		return val
+	}
+	return protoToIdfItemType[pb.ItemTypeMessage_UNKNOWN]
+}
 
 func NewItemRepository() db.ItemRepository {
 	return &ItemRepositoryImpl{}
@@ -84,7 +133,7 @@ func (r *ItemRepositoryImpl) CreateItem(itemEntity *models.ItemEntity) error {
 		AddAttribute(&attributeDataArgList, itemNameAttr, *itemEntity.Item.ItemName)
 	}
 	if itemEntity.Item.ItemType != nil {
-		AddAttribute(&attributeDataArgList, itemTypeAttr, *itemEntity.Item.ItemType)
+		AddAttribute(&attributeDataArgList, itemTypeAttr, resolveItemTypeIdfValue(*itemEntity.Item.ItemType))
 	}
 	if itemEntity.Item.Description != nil {
 		AddAttribute(&attributeDataArgList, descriptionAttr, *itemEntity.Item.Description)
@@ -149,272 +198,95 @@ func (r *ItemRepositoryImpl) ListItems(queryParams *models.QueryParams) ([]*pb.I
 	var totalCount int64
 
 	if queryParams.Expand != "" {
-		// GraphQL path (with expand) - following categories pattern
-		log.Infof("Using GraphQL path for expansion: %s", queryParams.Expand)
+		// GraphQL path (with expand) - following categories pattern (fetchDataFromStatsGW).
+		// Categories NEVER falls back to IDF for expand. It always uses GraphQL via StatsGW.
+		// IdfGraphqlQueryEvaluator generates a single GraphQL query with JOINs.
+		// Nested OData options ($select, $filter, $orderby) within $expand are included
+		// in the GraphQL query and handled server-side by StatsGW.
+		log.Infof("Using GraphQL path for expansion (categories pattern - no IDF fallback): %s", queryParams.Expand)
 
-		// Try statsGW first, but fallback to regular IDF if it fails
-		// NOTE: statsGW might not support nested expand options like $select and $orderby
-		// So we'll always fallback to IDF path when nested options are present
-		// Also, GraphQL doesn't support itemStats expand, so use IDF path for itemStats
-		expandOptions := ParseExpandOptions(queryParams.Expand)
-		hasNestedOptions := expandOptions != nil && (expandOptions.Select != nil || expandOptions.OrderBy != nil || expandOptions.Filter != nil)
-		hasItemStatsExpand := strings.Contains(queryParams.Expand, "itemStats")
-
-		// Debug: Log time range parameters if present
-		if expandOptions != nil && hasItemStatsExpand {
-			if expandOptions.StartTime != nil {
-				log.Infof("🔍 [ListItems] Parsed $startTime: %d ms (%s)", *expandOptions.StartTime,
-					time.Unix(*expandOptions.StartTime/1000, 0).UTC().Format(time.RFC3339))
-			}
-			if expandOptions.EndTime != nil {
-				log.Infof("🔍 [ListItems] Parsed $endTime: %d ms (%s)", *expandOptions.EndTime,
-					time.Unix(*expandOptions.EndTime/1000, 0).UTC().Format(time.RFC3339))
-			}
-			if expandOptions.StartTime == nil && expandOptions.EndTime == nil {
-				log.Infof("🔍 [ListItems] No time range parameters in $expand (will use default)")
-			}
+		graphqlQuery, isFlipped, graphqlErr := GenerateGraphQLQuery(queryParams, itemListPath)
+		if graphqlErr != nil {
+			log.Errorf("Failed to generate GraphQL query for expand: %v", graphqlErr)
+			return nil, 0, fmt.Errorf("failed to generate expand query: %w", graphqlErr)
 		}
 
 		statsGWClient := external.Interfaces().StatsGWClient()
-		if statsGWClient != nil && !hasNestedOptions && !hasItemStatsExpand {
-			// Generate GraphQL query from OData (only for associations, not itemStats)
-			graphqlQuery, graphqlErr := GenerateGraphQLQuery(queryParams, itemListPath)
-			if graphqlErr == nil {
-				// Execute GraphQL via statsGW
-				graphqlRet, err := statsGWClient.ExecuteGraphql(context.Background(), graphqlQuery)
-				if err == nil {
-					// Parse and map GraphQL response
-					graphqlRetDto, err := ParseGraphqlResponse(graphqlRet.GetData())
-					if err == nil {
-						items, err = MapGraphqlToItems(graphqlRetDto, queryParams.Expand)
-						if err == nil {
-							totalCount = int64(graphqlRetDto.TotalCount)
-							log.Infof("✅ Retrieved %d items from GraphQL (total: %d)", len(items), totalCount)
-							return items, totalCount, nil
-						}
-					}
-				}
-				if err != nil {
-					log.Warnf("statsGW query failed, falling back to regular IDF: %v", err)
-				}
-			}
-		} else if hasNestedOptions {
-			log.Infof("Nested expand options detected (select=%v, orderby=%v, filter=%v), using IDF fallback path",
-				expandOptions.Select != nil, expandOptions.OrderBy != nil, expandOptions.Filter != nil)
-		} else if hasItemStatsExpand {
-			log.Infof("itemStats expand detected, using IDF path (GraphQL doesn't support itemStats)")
+		if statsGWClient == nil {
+			return nil, 0, fmt.Errorf("StatsGW client not available - required for $expand")
 		}
 
-		// Fallback: Fetch items and associations separately from IDF
-		// This works without statsGW, though less efficient
-		log.Warnf("statsGW not available or failed, fetching associations directly from IDF")
-		queryParamsWithoutExpand := *queryParams
-		queryParamsWithoutExpand.Expand = "" // Remove expand to use regular IDF path
-
-		// Use regular IDF path to get items
-		queryArg, err := GenerateListQuery(&queryParamsWithoutExpand, itemListPath, itemEntityTypeName, itemIdAttr)
+		graphqlRet, err := statsGWClient.ExecuteGraphql(context.Background(), graphqlQuery)
 		if err != nil {
-			log.Errorf("Failed to generate IDF query from OData params: %v", err)
-			return nil, 0, fmt.Errorf("failed to parse OData query: %w", err)
+			log.Errorf("StatsGW query failed for expand: %v", err)
+			return nil, 0, fmt.Errorf("StatsGW query failed: %w", err)
 		}
 
-		// Query IDF for items
-		idfClient := external.Interfaces().IdfClient()
-		queryResponse, err := idfClient.GetEntitiesWithMetricsRet(queryArg)
-		if err != nil {
-			log.Errorf("Failed to query IDF: %v", err)
-			return nil, 0, err
-		}
-
-		// Convert IDF entities to Item protobufs
-		groupResults := queryResponse.GetGroupResultsList()
-		if len(groupResults) == 0 {
-			return []*pb.Item{}, 0, nil
-		}
-
-		entitiesWithMetric := groupResults[0].GetRawResults()
-		entities := ConvertEntitiesWithMetricToEntities(entitiesWithMetric)
-		for _, entity := range entities {
-			item := r.mapIdfAttributeToItem(entity)
-			items = append(items, item)
-		}
-
-		// Now fetch associations for each item from IDF if expand includes associations
-		// Query item_associations entity where item_id matches item.extId
-		var associationsMap map[string][]map[string]interface{}
-		if strings.Contains(queryParams.Expand, "associations") {
-			log.Infof("🔍 Fetching associations for %d items", len(items))
-			var err error
-			associationsMap, err = r.fetchAssociationsForItems(items)
-			if err != nil {
-				log.Warnf("Failed to fetch associations: %v, continuing without associations", err)
-				associationsMap = make(map[string][]map[string]interface{})
-			} else {
-				log.Infof("📊 Fetched associations map with %d item entries", len(associationsMap))
-				// Attach associations to items
-				totalAssocs := 0
-				for _, item := range items {
-					if item.ExtId != nil {
-						log.Debugf("Checking associations for item extId: %s", *item.ExtId)
-						if assocs, found := associationsMap[*item.ExtId]; found {
-							log.Debugf("Found %d associations for item %s", len(assocs), *item.ExtId)
-							if len(assocs) > 0 {
-								// Convert map associations to protobuf ItemAssociation objects
-								itemAssociations := make([]*pb.ItemAssociation, 0, len(assocs))
-								for i, assocMap := range assocs {
-									itemAssoc := &pb.ItemAssociation{}
-
-									if entityType, ok := assocMap["entityType"].(string); ok {
-										itemAssoc.EntityType = &entityType
-										log.Debugf("  Association[%d]: entityType=%s", i, entityType)
-									}
-									if entityId, ok := assocMap["entityId"].(string); ok {
-										itemAssoc.EntityId = &entityId
-										log.Debugf("  Association[%d]: entityId=%s", i, entityId)
-									}
-									if count, ok := assocMap["count"].(int32); ok {
-										itemAssoc.Count = &count
-										log.Debugf("  Association[%d]: count=%d", i, count)
-									}
-									if itemId, ok := assocMap["itemId"].(string); ok {
-										itemAssoc.ItemId = &itemId
-										log.Debugf("  Association[%d]: itemId=%s", i, itemId)
-									}
-									// Map stats fields (totalCount and averageScore) from stats module
-									// TODO: Uncomment after regenerating protobufs with TotalCount and AverageScore fields
-									// if totalCount, ok := assocMap["totalCount"].(int64); ok {
-									// 	itemAssoc.TotalCount = &totalCount
-									// 	log.Debugf("  Association[%d]: totalCount=%d", i, totalCount)
-									// }
-									// if averageScore, ok := assocMap["averageScore"].(float64); ok {
-									// 	itemAssoc.AverageScore = &averageScore
-									// 	log.Debugf("  Association[%d]: averageScore=%f", i, averageScore)
-									// }
-
-									itemAssociations = append(itemAssociations, itemAssoc)
-								}
-
-								log.Infof("📦 Converted %d associations to protobuf for item %s", len(itemAssociations), *item.ExtId)
-
-								// Apply nested expand options (filter, select, orderby)
-								// Examples:
-								//   - $expand=associations($filter=entityType eq 'vm')
-								//   - $expand=associations($select=entityType,count)
-								//   - $expand=associations($orderby=entityType asc)
-								expandOptions := ParseExpandOptions(queryParams.Expand)
-								if expandOptions != nil {
-									log.Infof("🔧 Applying expand options: filter=%v, select=%v, orderby=%v (before: %d associations)",
-										expandOptions.Filter != nil, expandOptions.Select != nil, expandOptions.OrderBy != nil, len(itemAssociations))
-									itemAssociations = ApplyExpandOptions(itemAssociations, expandOptions)
-									log.Infof("✅ Applied expand options, result: %d associations", len(itemAssociations))
-								}
-
-								// Only attach if there are associations after applying options
-								if len(itemAssociations) > 0 {
-									// Wrap in ItemAssociationArrayWrapper
-									item.Associations = &pb.ItemAssociationArrayWrapper{
-										Value: itemAssociations,
-									}
-									totalAssocs += len(itemAssociations)
-									// Log association details for debugging
-									for i, assoc := range itemAssociations {
-										log.Infof("  Association[%d]: entityType=%v, entityId=%v, count=%v, itemId=%v",
-											i, assoc.EntityType, assoc.EntityId, assoc.Count, assoc.ItemId)
-									}
-									log.Infof("✅ Attached %d associations to item %s", len(itemAssociations), *item.ExtId)
-								} else {
-									log.Warnf("⚠️  No associations remaining after applying expand options for item %s", *item.ExtId)
-								}
-							} else {
-								log.Debugf("No associations found for item %s (empty list)", *item.ExtId)
-							}
-						} else {
-							log.Debugf("No associations found in map for item extId: %s", *item.ExtId)
-						}
-					} else {
-						log.Debugf("Item has no extId, skipping association fetch")
-					}
-				}
-				log.Infof("✅ Attached %d total associations to %d items (from %d items processed)", totalAssocs, len(associationsMap), len(items))
-			}
-		}
-
-		// Now fetch itemStats for each item from IDF if expand includes itemStats
-		if strings.Contains(queryParams.Expand, "itemStats") {
-			log.Infof("🔍 [itemStats EXPAND] Fetching itemStats for %d items (expand param: %s)", len(items), queryParams.Expand)
-			// Parse expand options to extract time-series parameters
-			expandOptions := ParseExpandOptions(queryParams.Expand)
-			itemStatsMap, err := r.fetchItemStatsForItems(items, expandOptions)
-			if err != nil {
-				log.Errorf("❌ [itemStats EXPAND] Failed to fetch itemStats: %v", err)
-			} else {
-				log.Infof("📊 [itemStats EXPAND] Fetched itemStats map with %d item entries (total items: %d)", len(itemStatsMap), len(items))
-				// Attach itemStats to items
-				totalStats := 0
-				for _, item := range items {
-					if item.ExtId != nil {
-						log.Debugf("[itemStats EXPAND] Checking itemStats for item extId: %s", *item.ExtId)
-						if stats, found := itemStatsMap[*item.ExtId]; found {
-							log.Debugf("[itemStats EXPAND] Found %d itemStats for item %s (taking first for one-to-one)", len(stats), *item.ExtId)
-							if len(stats) > 0 {
-								// One-to-one relationship: take only the first itemStats
-								firstStat := stats[0]
-								// Assign single ItemStats object (protobuf now uses single object, not array wrapper)
-								item.ItemStats = firstStat
-								totalStats += 1
-								log.Infof("✅ [itemStats EXPAND] Attached 1 itemStats (one-to-one) to item %s", *item.ExtId)
-							}
-						} else {
-							log.Debugf("[itemStats EXPAND] No itemStats found for item extId: %s", *item.ExtId)
-						}
-					} else {
-						log.Debugf("[itemStats EXPAND] Item has no extId, skipping itemStats fetch")
-					}
-				}
-				log.Infof("✅ [itemStats EXPAND] Attached %d total itemStats to %d items (map size: %d)", totalStats, len(items), len(itemStatsMap))
-			}
+		rawData := graphqlRet.GetData()
+		if len(rawData) > 2000 {
+			log.Infof("📋 [Expand] StatsGW response (first 2000 chars): %s", rawData[:2000])
 		} else {
-			log.Debugf("[itemStats EXPAND] Expand does not contain 'itemStats' (expand: %s)", queryParams.Expand)
+			log.Infof("📋 [Expand] StatsGW response: %s", rawData)
 		}
 
-		totalCount = groupResults[0].GetTotalEntityCount()
-		log.Infof("✅ Retrieved %d items from IDF (total: %d) with associations and itemStats fetched separately", len(items), totalCount)
-	} else {
-		// Regular IDF path (no expand)
-		log.Debugf("Using regular IDF path (no expand)")
-
-		// Use OData parser to generate IDF query
-		queryArg, err := GenerateListQuery(queryParams, itemListPath, itemEntityTypeName, itemIdAttr)
-		if err != nil {
-			log.Errorf("Failed to generate IDF query from OData params: %v", err)
-			return nil, 0, fmt.Errorf("failed to parse OData query: %w", err)
+		if isFlipped {
+			flippedRetDto, err := ParseFlippedGraphqlResponse(rawData)
+			if err != nil {
+				log.Errorf("Failed to parse flipped GraphQL expand response: %v", err)
+				return nil, 0, fmt.Errorf("failed to parse flipped expand response: %w", err)
+			}
+			items, err = MapFlippedGraphqlToItems(flippedRetDto, queryParams.Expand)
+			if err != nil {
+				log.Errorf("Failed to map flipped GraphQL expand response: %v", err)
+				return nil, 0, fmt.Errorf("failed to map flipped expand response: %w", err)
+			}
+			totalCount = int64(flippedRetDto.TotalCount)
+		} else {
+			graphqlRetDto, err := ParseGraphqlResponse(rawData)
+			if err != nil {
+				log.Errorf("Failed to parse GraphQL expand response: %v", err)
+				return nil, 0, fmt.Errorf("failed to parse expand response: %w", err)
+			}
+			items, err = MapGraphqlToItems(graphqlRetDto, queryParams.Expand)
+			if err != nil {
+				log.Errorf("Failed to map GraphQL expand response: %v", err)
+				return nil, 0, fmt.Errorf("failed to map expand response: %w", err)
+			}
+			totalCount = int64(graphqlRetDto.TotalCount)
 		}
+		log.Infof("✅ Retrieved %d items from GraphQL with expand (total: %d, flipped: %v)", len(items), totalCount, isFlipped)
 
-		// Query IDF
-		idfClient := external.Interfaces().IdfClient()
-		queryResponse, err := idfClient.GetEntitiesWithMetricsRet(queryArg)
-		if err != nil {
-			log.Errorf("Failed to query IDF: %v", err)
-			return nil, 0, err
-		}
-
-		// Convert IDF entities to Item protobufs
-		groupResults := queryResponse.GetGroupResultsList()
-		if len(groupResults) == 0 {
-			return []*pb.Item{}, 0, nil
-		}
-
-		entitiesWithMetric := groupResults[0].GetRawResults()
-		// Convert EntityWithMetric to Entity (following az-manager pattern)
-		entities := ConvertEntitiesWithMetricToEntities(entitiesWithMetric)
-		for _, entity := range entities {
-			item := r.mapIdfAttributeToItem(entity)
-			items = append(items, item)
-		}
-
-		totalCount = groupResults[0].GetTotalEntityCount()
-		log.Infof("✅ Retrieved %d items from IDF (total: %d)", len(items), totalCount)
+		return items, totalCount, nil
 	}
+
+	// Non-expand path: use IDF directly
+	queryArg, err := GenerateListQuery(queryParams, itemListPath, itemEntityTypeName, itemIdAttr)
+	if err != nil {
+		log.Errorf("Failed to generate IDF query from OData params: %v", err)
+		return nil, 0, fmt.Errorf("failed to parse OData query: %w", err)
+	}
+
+	idfClient := external.Interfaces().IdfClient()
+	queryResponse, err := idfClient.GetEntitiesWithMetricsRet(queryArg)
+	if err != nil {
+		log.Errorf("Failed to query IDF: %v", err)
+		return nil, 0, err
+	}
+
+	groupResults := queryResponse.GetGroupResultsList()
+	if len(groupResults) == 0 {
+		return []*pb.Item{}, 0, nil
+	}
+
+	entitiesWithMetric := groupResults[0].GetRawResults()
+	entities := ConvertEntitiesWithMetricToEntities(entitiesWithMetric)
+	for _, entity := range entities {
+		item := r.mapIdfAttributeToItem(entity)
+		items = append(items, item)
+	}
+
+	totalCount = groupResults[0].GetTotalEntityCount()
+	log.Infof("✅ Retrieved %d items from IDF (total: %d)", len(items), totalCount)
 
 	return items, totalCount, nil
 }
@@ -425,14 +297,55 @@ func (r *ItemRepositoryImpl) ListItems(queryParams *models.QueryParams) ([]*pb.I
 func (r *ItemRepositoryImpl) ListItemsWithGroupBy(queryParams *models.QueryParams) ([]*pb.ItemGroup, int64, error) {
 	log.Infof("Executing GroupBy query with $apply: %s", queryParams.Apply)
 
-	// Use OData parser to generate IDF query (handles $apply via IDFApplyEvaluator)
+	// When $expand is present, use GraphQL path (like categories' fetchAndMakeGroupsResponseGraphql).
+	// IdfGraphqlQueryEvaluator generates a single GraphQL query with groupby + JOINs + nested options.
+	// StatsGW handles $select/$filter/$orderby for expanded entities server-side.
+	if queryParams.Expand != "" {
+		log.Infof("Using GraphQL path for GroupBy + Expand (categories pattern - no IDF fallback)")
+
+		graphqlQuery, _, graphqlErr := GenerateGraphQLQuery(queryParams, itemListPath)
+		if graphqlErr != nil {
+			log.Errorf("Failed to generate GraphQL query for GroupBy+Expand: %v", graphqlErr)
+			return nil, 0, fmt.Errorf("failed to generate GroupBy+Expand query: %w", graphqlErr)
+		}
+
+		statsGWClient := external.Interfaces().StatsGWClient()
+		if statsGWClient == nil {
+			return nil, 0, fmt.Errorf("StatsGW client not available - required for $expand with GroupBy")
+		}
+
+		graphqlRet, err := statsGWClient.ExecuteGraphql(context.Background(), graphqlQuery)
+		if err != nil {
+			log.Errorf("StatsGW GroupBy+Expand query failed: %v", err)
+			return nil, 0, fmt.Errorf("StatsGW GroupBy+Expand query failed: %w", err)
+		}
+
+		rawData := graphqlRet.GetData()
+		if len(rawData) > 2000 {
+			log.Infof("📋 [GroupBy+Expand] StatsGW response (first 2000 chars): %s", rawData[:2000])
+		} else {
+			log.Infof("📋 [GroupBy+Expand] StatsGW response: %s", rawData)
+		}
+
+		groupedDto, err := ParseGroupedGraphqlResponse(rawData)
+		if err != nil {
+			log.Errorf("Failed to parse grouped GraphQL response: %v", err)
+			return nil, 0, fmt.Errorf("failed to parse grouped response: %w", err)
+		}
+
+		groupByColumn := extractGroupByColumn(queryParams.Apply)
+		itemGroups, totalGroupCount := MapGroupedGraphqlToItemGroups(groupedDto, queryParams.Expand, groupByColumn)
+		log.Infof("✅ Retrieved %d groups from GraphQL (total: %d)", len(itemGroups), totalGroupCount)
+		return itemGroups, totalGroupCount, nil
+	}
+
+	// IDF path (used when no expand, or as fallback)
 	queryArg, err := GenerateListQuery(queryParams, itemListPath, itemEntityTypeName, itemIdAttr)
 	if err != nil {
 		log.Errorf("Failed to generate IDF GroupBy query from OData params: %v", err)
 		return nil, 0, fmt.Errorf("failed to parse $apply query: %w", err)
 	}
 
-	// Query IDF with GroupBy
 	idfClient := external.Interfaces().IdfClient()
 	queryResponse, err := idfClient.GetEntitiesWithMetricsRet(queryArg)
 	if err != nil {
@@ -448,10 +361,11 @@ func (r *ItemRepositoryImpl) ListItemsWithGroupBy(queryParams *models.QueryParam
 	}
 
 	var itemGroups []*pb.ItemGroup
-	var totalCount int64
 
 	// Process each group result
 	for _, groupResult := range groupResults {
+		entityCount := groupResult.GetTotalEntityCount()
+
 		// Get entities in this group
 		entitiesWithMetric := groupResult.GetRawResults()
 		entities := ConvertEntitiesWithMetricToEntities(entitiesWithMetric)
@@ -461,16 +375,18 @@ func (r *ItemRepositoryImpl) ListItemsWithGroupBy(queryParams *models.QueryParam
 			continue
 		}
 
-		// Extract group key from first entity
-		// For groupby(itemType), all entities in the group have the same itemType value
-		firstEntity := entities[0]
-		groupKey := r.extractGroupKey(firstEntity, queryParams.Apply)
+		// Extract group key from GroupByColumnValue (group-level value from IDF).
+		// This matches the categories data-sync-service pattern and avoids requiring
+		// the GroupBy column in RawColumns (so $select works correctly).
+		groupKey := r.buildGroupKeyFromValue(groupResult.GetGroupByColumnValue(), queryParams.Apply)
 		if groupKey == nil {
-			log.Warnf("Failed to extract group key from first entity, skipping group")
+			log.Warnf("Failed to build group key from GroupByColumnValue, skipping group")
 			continue
 		}
 
-		// Convert entities to items
+		// Convert entities to items.
+		// Per-group entity limit is enforced by RawLimit in the IDF query.
+		// Max-limit validation (e.g. $limit > 100) is handled by the dev-platform.
 		var items []*pb.Item
 		for _, entity := range entities {
 			item := r.mapIdfAttributeToItem(entity)
@@ -528,18 +444,9 @@ func (r *ItemRepositoryImpl) ListItemsWithGroupBy(queryParams *models.QueryParam
 
 								// Apply nested expand options (filter, select, orderby)
 								// Examples:
-								//   - $expand=associations($filter=entityType eq 'vm')
-								//   - $expand=associations($select=entityType,count)
-								//   - $expand=associations($orderby=entityType asc)
-								expandOptions := ParseExpandOptions(queryParams.Expand)
-								if expandOptions != nil {
-									log.Infof("🔧 Applying expand options to GroupBy: filter=%v, select=%v, orderby=%v (before: %d associations)",
-										expandOptions.Filter != nil, expandOptions.Select != nil, expandOptions.OrderBy != nil, len(itemAssociations))
-									itemAssociations = ApplyExpandOptions(itemAssociations, expandOptions)
-									log.Infof("✅ Applied expand options, result: %d associations", len(itemAssociations))
-								}
+								// Nested expand options ($filter, $select, $orderby) are passed through
+								// to the OData library and handled server-side by the dev-platform.
 
-								// Only attach if there are associations after applying options
 								if len(itemAssociations) > 0 {
 									// Wrap in ItemAssociationArrayWrapper
 									item.Associations = &pb.ItemAssociationArrayWrapper{
@@ -568,10 +475,7 @@ func (r *ItemRepositoryImpl) ListItemsWithGroupBy(queryParams *models.QueryParam
 						if item.ExtId != nil {
 							if stats, found := itemStatsMap[*item.ExtId]; found {
 								if len(stats) > 0 {
-									// One-to-one relationship: take only the first itemStats
-									firstStat := stats[0]
-									// Assign single ItemStats object (protobuf now uses single object, not array wrapper)
-									item.ItemStats = firstStat
+									item.ItemStats = stats[0]
 									totalStats += 1
 								}
 							}
@@ -582,91 +486,11 @@ func (r *ItemRepositoryImpl) ListItemsWithGroupBy(queryParams *models.QueryParam
 			}
 		}
 
-		// Extract aggregate results from IDF if present
-		// TODO: IDF aggregate results need to be extracted from EntityWithMetric.MetricDataList
-		// For now, we'll extract from the $apply parameter and construct aggregates
-		// The actual aggregate values should come from IDF's MetricDataList in EntityWithMetric
-		var aggregates []*pb.ItemAggregate
-
-		// Check if $apply contains aggregate expressions
-		if strings.Contains(queryParams.Apply, "aggregate(") {
-			log.Infof("📊 Parsing aggregate expressions from $apply: %s", queryParams.Apply)
-
-			// Parse $apply to extract aggregation aliases (e.g., "totalCount" from "itemId with count as totalCount")
-			aggregationAliases := r.parseAggregationAliases(queryParams.Apply)
-			log.Debugf("  Parsed %d aggregation aliases: %v", len(aggregationAliases), aggregationAliases)
-
-			// Extract aggregate values from EntityWithMetric.MetricDataList
-			// For group-by queries with aggregations, IDF returns aggregate values as metrics
-			entitiesWithMetric := groupResult.GetRawResults()
-			if len(entitiesWithMetric) > 0 {
-				// The first EntityWithMetric might contain group-level aggregate metrics
-				firstEntityWithMetric := entitiesWithMetric[0]
-				if firstEntityWithMetric != nil && firstEntityWithMetric.GetMetricDataList() != nil {
-					metricDataList := firstEntityWithMetric.GetMetricDataList()
-					log.Debugf("  Found %d metrics in EntityWithMetric", len(metricDataList))
-
-					// Log all metric names for debugging
-					for i, metricData := range metricDataList {
-						log.Debugf("  Metric[%d]: name=%s", i, metricData.GetName())
-					}
-
-					// Map metric data to ItemAggregate objects
-					// Only include metrics that match the requested aggregations
-					for _, metricData := range metricDataList {
-						metricName := metricData.GetName()
-						if metricData.GetValueList() != nil && len(metricData.GetValueList()) > 0 {
-							metricValue := metricData.GetValueList()[0].GetValue()
-
-							// Try to match metric name to aggregation alias
-							// Metric names in IDF might be in format "column_operator" (e.g., "item_id_kCount", "price_kAvg")
-							alias := r.findAggregationAliasFromMetricName(metricName, aggregationAliases)
-
-							// Only create aggregate if we found a matching alias (i.e., this metric corresponds to a requested aggregation)
-							if alias == "" {
-								log.Debugf("  Skipping metric %s (no matching aggregation alias)", metricName)
-								continue
-							}
-
-							itemAggregate := &pb.ItemAggregate{
-								Label: &alias,
-							}
-
-							// Map the metric value to appropriate result type
-							if metricValue != nil {
-								if intVal := metricValue.GetInt64Value(); intVal != 0 {
-									itemAggregate.Result = &pb.ItemAggregate_Int64Result{
-										Int64Result: &pb.Int64Wrapper{
-											Value: proto.Int64(intVal),
-										},
-									}
-									log.Debugf("  ✅ Mapped metric %s -> aggregate %s (int64: %d)", metricName, alias, intVal)
-								} else if doubleVal := metricValue.GetDoubleValue(); doubleVal != 0 {
-									itemAggregate.Result = &pb.ItemAggregate_DoubleResult{
-										DoubleResult: &pb.DoubleWrapper{
-											Value: proto.Float64(doubleVal),
-										},
-									}
-									log.Debugf("  ✅ Mapped metric %s -> aggregate %s (double: %f)", metricName, alias, doubleVal)
-								} else {
-									log.Debugf("  ⚠️  Metric %s has value but type is not int64 or double", metricName)
-								}
-							} else {
-								log.Debugf("  ⚠️  Metric %s has nil value", metricName)
-							}
-
-							if itemAggregate.Result != nil {
-								aggregates = append(aggregates, itemAggregate)
-							}
-						}
-					}
-				}
-			}
-
-			log.Infof("✅ Mapped %d aggregates to ItemAggregate objects (expected: %d)", len(aggregates), len(aggregationAliases))
-		} else {
-			log.Debugf("No aggregate expressions found in $apply parameter")
-		}
+		// Extract aggregate results from IDF GroupSummaries
+		// IDF returns aggregate data in QueryGroupResult.GroupSummaries (not MetricDataList).
+		// Each GroupSummary has SummaryData with Name (label) and ValueList (aggregate values).
+		// This follows the same pattern as ntnx-api-categories-data-sync-service.
+		aggregates := r.buildItemAggregatesFromIDF(groupResult)
 
 		// Create ItemGroup with group key, items, and aggregates
 		var aggregatesWrapper *pb.ItemAggregateArrayWrapper
@@ -683,6 +507,9 @@ func (r *ItemRepositoryImpl) ListItemsWithGroupBy(queryParams *models.QueryParam
 				},
 			},
 			Aggregates: aggregatesWrapper,
+			Metadata: &response.ApiResponseMetadata{
+				TotalAvailableResults: proto.Int32(int32(entityCount)),
+			},
 		}
 
 		// Set the group key based on type
@@ -703,83 +530,245 @@ func (r *ItemRepositoryImpl) ListItemsWithGroupBy(queryParams *models.QueryParam
 		}
 
 		itemGroups = append(itemGroups, itemGroup)
-		totalCount += groupResult.GetTotalEntityCount()
 	}
 
-	log.Infof("✅ Retrieved %d ItemGroups from GroupBy query (total: %d groups, %d total items)",
-		len(itemGroups), len(groupResults), totalCount)
+	// Outer totalAvailableResults = total number of groups.
+	// Use IDF's TotalGroupCount when available (accounts for group_limit truncation),
+	// otherwise fall back to len(itemGroups).
+	totalCount := queryResponse.GetTotalGroupCount()
+	if totalCount == 0 {
+		totalCount = int64(len(itemGroups))
+	}
+
+	log.Infof("✅ Retrieved %d ItemGroups from GroupBy query (totalAvailableResults: %d groups)",
+		len(itemGroups), totalCount)
 
 	return itemGroups, totalCount, nil
 }
 
-// extractGroupKey extracts the group key from an entity based on the $apply parameter
-// For groupby(itemType), extracts itemType value and returns ItemGroup_StringGroup
-func (r *ItemRepositoryImpl) extractGroupKey(entity *insights_interface.Entity, applyParam string) interface{} {
-	// Parse $apply to determine which field we're grouping by
-	// For now, handle simple cases: groupby(itemType), groupby(itemId), etc.
-	// TODO: Support multiple groupby fields and complex expressions
+// groupFieldInfo describes how an OData groupby property maps to IDF storage.
+type groupFieldInfo struct {
+	idfAttr   string
+	valueType string // "string", "int32", "int64", "double", "boolean"
+	isEnum    bool   // true for enum columns stored as int64 in IDF but displayed as string
+}
 
-	// Simple heuristic: if applyParam contains "itemType", group by itemType
-	if strings.Contains(applyParam, "itemType") {
-		// Extract itemType value from entity
-		for _, attr := range entity.GetAttributeDataMap() {
-			if attr.GetName() == itemTypeAttr {
-				if attr.GetValue() != nil {
-					val := attr.GetValue().GetStrValue()
-					return &pb.ItemGroup_StringGroup{
-						StringGroup: &pb.StringWrapper{
-							Value: proto.String(val),
-						},
-					}
+// oDataToIdfGroupField maps OData camelCase property names to their IDF attribute and type info.
+var oDataToIdfGroupField = map[string]groupFieldInfo{
+	"itemType":    {itemTypeAttr, "int64", true},
+	"itemName":    {itemNameAttr, "string", false},
+	"description": {descriptionAttr, "string", false},
+	"status":      {statusAttr, "string", false},
+	"itemId":      {itemIdAttr, "int32", false},
+	"quantity":    {quantityAttr, "int64", false},
+	"priority":    {priorityAttr, "int32", false},
+	"price":       {priceAttr, "double", false},
+	"isActive":    {isActiveAttr, "boolean", false},
+}
+
+// resolveEnumGroupLabel converts a raw int64 value to a display label for enum-type groupBy columns.
+// Returns the label and true if the column is an enum column, or empty string and false otherwise.
+func resolveEnumGroupLabel(idfAttr string, intValue int64) (string, bool) {
+	switch idfAttr {
+	case itemTypeAttr:
+		return resolveItemTypeLabel(intValue), true
+	default:
+		return "", false
+	}
+}
+
+// extractGroupKey extracts the group key from an entity based on the $apply parameter.
+// For enum columns (like itemType), the int64 stored in IDF is resolved to its string label
+// and returned as a StringGroup, matching the categories service pattern.
+func (r *ItemRepositoryImpl) extractGroupKey(entity *insights_interface.Entity, applyParam string) interface{} {
+	var fieldInfo groupFieldInfo
+	found := false
+	for odataName, info := range oDataToIdfGroupField {
+		if strings.Contains(applyParam, odataName) {
+			fieldInfo = info
+			found = true
+			break
+		}
+	}
+	if !found {
+		log.Warnf("Could not find groupby field mapping for applyParam: %s", applyParam)
+		return nil
+	}
+
+	for _, attr := range entity.GetAttributeDataMap() {
+		if attr.GetName() != fieldInfo.idfAttr || attr.GetValue() == nil {
+			continue
+		}
+
+		// Enum columns: stored as int64 in IDF, resolved to string label for the response
+		if fieldInfo.isEnum {
+			int64Val := attr.GetValue().GetInt64Value()
+			if label, ok := resolveEnumGroupLabel(fieldInfo.idfAttr, int64Val); ok {
+				return &pb.ItemGroup_StringGroup{
+					StringGroup: &pb.StringWrapper{
+						Value: proto.String(label),
+					},
 				}
 			}
 		}
-	} else if strings.Contains(applyParam, "itemId") {
-		// Group by itemId (int64)
-		for _, attr := range entity.GetAttributeDataMap() {
-			if attr.GetName() == itemIdAttr {
-				if attr.GetValue() != nil {
-					val := int32(attr.GetValue().GetInt64Value())
-					return &pb.ItemGroup_Int32Group{
-						Int32Group: &pb.Int32Wrapper{
-							Value: proto.Int32(val),
-						},
-					}
-				}
+
+		switch fieldInfo.valueType {
+		case "string":
+			return &pb.ItemGroup_StringGroup{
+				StringGroup: &pb.StringWrapper{
+					Value: proto.String(attr.GetValue().GetStrValue()),
+				},
 			}
-		}
-	} else if strings.Contains(applyParam, "isActive") {
-		// Group by isActive (boolean)
-		for _, attr := range entity.GetAttributeDataMap() {
-			if attr.GetName() == isActiveAttr {
-				if attr.GetValue() != nil {
-					val := attr.GetValue().GetBoolValue()
-					return &pb.ItemGroup_BooleanGroup{
-						BooleanGroup: &pb.BooleanWrapper{
-							Value: proto.Bool(val),
-						},
-					}
-				}
+		case "int32":
+			return &pb.ItemGroup_Int32Group{
+				Int32Group: &pb.Int32Wrapper{
+					Value: proto.Int32(int32(attr.GetValue().GetInt64Value())),
+				},
 			}
-		}
-	} else if strings.Contains(applyParam, "status") {
-		// Group by status (string)
-		for _, attr := range entity.GetAttributeDataMap() {
-			if attr.GetName() == statusAttr {
-				if attr.GetValue() != nil {
-					val := attr.GetValue().GetStrValue()
-					return &pb.ItemGroup_StringGroup{
-						StringGroup: &pb.StringWrapper{
-							Value: proto.String(val),
-						},
-					}
-				}
+		case "int64":
+			return &pb.ItemGroup_Int64Group{
+				Int64Group: &pb.Int64Wrapper{
+					Value: proto.Int64(attr.GetValue().GetInt64Value()),
+				},
+			}
+		case "double":
+			return &pb.ItemGroup_DoubleGroup{
+				DoubleGroup: &pb.DoubleWrapper{
+					Value: proto.Float64(attr.GetValue().GetDoubleValue()),
+				},
+			}
+		case "boolean":
+			return &pb.ItemGroup_BooleanGroup{
+				BooleanGroup: &pb.BooleanWrapper{
+					Value: proto.Bool(attr.GetValue().GetBoolValue()),
+				},
 			}
 		}
 	}
 
-	log.Warnf("Could not extract group key from applyParam: %s", applyParam)
+	log.Warnf("Could not extract group key for IDF attr %s from entity", fieldInfo.idfAttr)
 	return nil
+}
+
+// buildGroupKeyFromValue builds the group key from IDF's QueryGroupResult.GroupByColumnValue.
+// This matches the categories data-sync-service pattern (buildCategoryGroupFromValue)
+// and avoids needing the GroupBy column in RawColumns.
+func (r *ItemRepositoryImpl) buildGroupKeyFromValue(dataValue *insights_interface.DataValue, applyParam string) interface{} {
+	if dataValue == nil {
+		log.Warnf("GroupByColumnValue is nil for applyParam: %s", applyParam)
+		return nil
+	}
+
+	var fieldInfo groupFieldInfo
+	found := false
+	for odataName, info := range oDataToIdfGroupField {
+		if strings.Contains(applyParam, odataName) {
+			fieldInfo = info
+			found = true
+			break
+		}
+	}
+	if !found {
+		log.Warnf("Could not find groupby field mapping for applyParam: %s", applyParam)
+		return nil
+	}
+
+	// Enum columns: IDF returns int64, resolve to string label for the response
+	if fieldInfo.isEnum {
+		int64Val := dataValue.GetInt64Value()
+		if label, ok := resolveEnumGroupLabel(fieldInfo.idfAttr, int64Val); ok {
+			return &pb.ItemGroup_StringGroup{
+				StringGroup: &pb.StringWrapper{Value: proto.String(label)},
+			}
+		}
+	}
+
+	switch fieldInfo.valueType {
+	case "string":
+		return &pb.ItemGroup_StringGroup{
+			StringGroup: &pb.StringWrapper{Value: proto.String(dataValue.GetStrValue())},
+		}
+	case "int32":
+		return &pb.ItemGroup_Int32Group{
+			Int32Group: &pb.Int32Wrapper{Value: proto.Int32(int32(dataValue.GetInt64Value()))},
+		}
+	case "int64":
+		return &pb.ItemGroup_Int64Group{
+			Int64Group: &pb.Int64Wrapper{Value: proto.Int64(dataValue.GetInt64Value())},
+		}
+	case "double":
+		return &pb.ItemGroup_DoubleGroup{
+			DoubleGroup: &pb.DoubleWrapper{Value: proto.Float64(dataValue.GetDoubleValue())},
+		}
+	case "boolean":
+		return &pb.ItemGroup_BooleanGroup{
+			BooleanGroup: &pb.BooleanWrapper{Value: proto.Bool(dataValue.GetBoolValue())},
+		}
+	}
+
+	log.Warnf("Unsupported group value type for field %s", fieldInfo.idfAttr)
+	return nil
+}
+
+// buildItemAggregatesFromIDF creates ItemAggregate objects from IDF GroupSummaries.
+// IDF returns aggregate results (count, sum, avg, etc.) in QueryGroupResult.GroupSummaries.
+// Each GroupSummary has SummaryData (MetricData) with Name and ValueList.
+// This mirrors ntnx-api-categories-data-sync-service/apis/v4/api_helper.go:buildCategoryAggregatesFromIDF.
+func (r *ItemRepositoryImpl) buildItemAggregatesFromIDF(groupResult *insights_interface.QueryGroupResult) []*pb.ItemAggregate {
+	aggregates := make([]*pb.ItemAggregate, 0)
+	groupSummaries := groupResult.GetGroupSummaries()
+	if len(groupSummaries) == 0 {
+		log.Debugf("No GroupSummaries found for this group result")
+		return aggregates
+	}
+
+	log.Infof("Processing %d GroupSummaries for aggregates", len(groupSummaries))
+	for _, groupSummary := range groupSummaries {
+		summaryData := groupSummary.GetSummaryData()
+		if summaryData == nil {
+			continue
+		}
+		log.Debugf("  GroupSummary: name=%s", summaryData.GetName())
+
+		aggregate := &pb.ItemAggregate{
+			Label: proto.String(summaryData.GetName()),
+		}
+
+		if len(summaryData.GetValueList()) > 0 {
+			firstValue := summaryData.GetValueList()[0]
+			if firstValue.GetValue() != nil {
+				val := firstValue.GetValue()
+				if intVal := val.GetInt64Value(); intVal != 0 {
+					aggregate.Result = &pb.ItemAggregate_Int64Result{
+						Int64Result: &pb.Int64Wrapper{
+							Value: proto.Int64(intVal),
+						},
+					}
+					log.Debugf("  Aggregate %s = %d (int64)", summaryData.GetName(), intVal)
+				} else if doubleVal := val.GetDoubleValue(); doubleVal != 0 {
+					aggregate.Result = &pb.ItemAggregate_DoubleResult{
+						DoubleResult: &pb.DoubleWrapper{
+							Value: proto.Float64(doubleVal),
+						},
+					}
+					log.Debugf("  Aggregate %s = %f (double)", summaryData.GetName(), doubleVal)
+				} else if int32Val := val.GetInt64Value(); int32Val == 0 {
+					// Handle zero-value counts (IDF may return 0 for empty groups)
+					aggregate.Result = &pb.ItemAggregate_Int64Result{
+						Int64Result: &pb.Int64Wrapper{
+							Value: proto.Int64(0),
+						},
+					}
+					log.Debugf("  Aggregate %s = 0 (int64, zero value)", summaryData.GetName())
+				}
+			}
+		}
+
+		aggregates = append(aggregates, aggregate)
+	}
+
+	log.Infof("Built %d ItemAggregate objects from GroupSummaries", len(aggregates))
+	return aggregates
 }
 
 // parseAggregationAliases parses the $apply parameter to extract aggregation aliases
@@ -991,11 +980,12 @@ func (r *ItemRepositoryImpl) mapIdfAttributeToItem(entity *insights_interface.En
 				log.Debugf("  Mapped item_name: %s", val)
 			}
 
-		case itemTypeAttr: // "item_type" (IDF) → ItemType (protobuf)
+		case itemTypeAttr: // "item_type" (IDF int64 enum) → ItemType (protobuf enum)
 			if attr.GetValue() != nil {
-				val := attr.GetValue().GetStrValue()
-				item.ItemType = &val
-				log.Debugf("  Mapped item_type: %s", val)
+				idfVal := attr.GetValue().GetInt64Value()
+				enumVal := resolveItemTypeProto(idfVal)
+				item.ItemType = &enumVal
+				log.Debugf("  Mapped item_type: IDF %d -> proto %s (%d)", idfVal, enumVal.String(), enumVal)
 			}
 
 		case descriptionAttr: // "description" (IDF) → Description (protobuf)
@@ -1138,7 +1128,7 @@ func (r *ItemRepositoryImpl) UpdateItem(extId string, itemEntity *models.ItemEnt
 		AddAttribute(&attributeDataArgList, itemNameAttr, *itemEntity.Item.ItemName)
 	}
 	if itemEntity.Item.ItemType != nil {
-		AddAttribute(&attributeDataArgList, itemTypeAttr, *itemEntity.Item.ItemType)
+		AddAttribute(&attributeDataArgList, itemTypeAttr, resolveItemTypeIdfValue(*itemEntity.Item.ItemType))
 	}
 	if itemEntity.Item.Description != nil {
 		AddAttribute(&attributeDataArgList, descriptionAttr, *itemEntity.Item.Description)
@@ -1456,7 +1446,6 @@ func (r *ItemRepositoryImpl) fetchItemStatsForItemsWithIDF(items []*pb.Item, ext
 	// Note: age, heart_rate, food_intake are time-series metrics (is_attribute: false)
 	// They will be returned in MetricDataList and converted to AttributeDataMap
 	rawColumns := []*insights_interface.QueryRawColumn{
-		{Column: proto.String("stats_ext_id")}, // Attribute
 		{Column: proto.String("item_ext_id")},  // Attribute
 	}
 
@@ -1575,7 +1564,7 @@ func (r *ItemRepositoryImpl) fetchItemStatsForItemsWithIDF(items []*pb.Item, ext
 	}
 	log.Infof("   Query string: %s", query.String())
 
-	log.Infof("🔍 [fetchItemStatsForItems] Querying IDF for itemStats with columns: stats_ext_id, item_ext_id, age, heart_rate, food_intake")
+	log.Infof("🔍 [fetchItemStatsForItems] Querying IDF for itemStats with columns: item_ext_id, age, heart_rate, food_intake, timestamp, speed")
 	log.Infof("🔍 [fetchItemStatsForItems] Requesting itemStats for %d items: %v", len(extIds), extIds)
 
 	queryArg := &insights_interface.GetEntitiesWithMetricsArg{
@@ -1692,18 +1681,10 @@ func (r *ItemRepositoryImpl) fetchItemStatsForItemsWithIDF(items []*pb.Item, ext
 			}
 		}
 
-		// Extract attributes (stats_ext_id, item_ext_id) from converted entity
+		// Extract item_ext_id attribute to map stats back to parent item
 		for _, attr := range entity.GetAttributeDataMap() {
-			switch attr.GetName() {
-			case "item_ext_id":
-				if attr.GetValue() != nil {
-					itemExtId = attr.GetValue().GetStrValue()
-				}
-			case "stats_ext_id":
-				if attr.GetValue() != nil {
-					val := attr.GetValue().GetStrValue()
-					stat.StatsExtId = &val
-				}
+			if attr.GetName() == "item_ext_id" && attr.GetValue() != nil {
+				itemExtId = attr.GetValue().GetStrValue()
 			}
 		}
 
@@ -1869,8 +1850,8 @@ func (r *ItemRepositoryImpl) fetchItemStatsForItemsWithIDF(items []*pb.Item, ext
 			if stat.GetFoodIntake() != nil {
 				foodIntakeCount = len(stat.GetFoodIntake().GetValue())
 			}
-			log.Debugf("  Added itemStats for item %s: statsExtId=%v, age=%d pairs, heartRate=%d pairs, foodIntake=%d pairs",
-				itemExtId, stat.StatsExtId, ageCount, heartRateCount, foodIntakeCount)
+			log.Debugf("  Added itemStats for item %s: age=%d pairs, heartRate=%d pairs, foodIntake=%d pairs",
+				itemExtId, ageCount, heartRateCount, foodIntakeCount)
 		} else {
 			log.Debugf("  Skipped itemStats (itemExtId=%s, inSet=%v)", itemExtId, extIdSet[itemExtId])
 		}
@@ -1888,7 +1869,7 @@ func (r *ItemRepositoryImpl) fetchItemStatsForItemsWithIDF(items []*pb.Item, ext
 }
 
 // buildItemStatsGraphQLQuery builds a GraphQL query for item_stats with time range support
-// Format: query { item_stats(args: {interval_start_ms: X, interval_end_ms: Y, ...}) { age(timeseries: true), heart_rate(timeseries: true), food_intake(timeseries: true), item_ext_id, stats_ext_id, _entity_id_ } }
+// Format: query { item_stats(args: {interval_start_ms: X, interval_end_ms: Y, ...}) { age(timeseries: true), heart_rate(timeseries: true), food_intake(timeseries: true), item_ext_id, _entity_id_ } }
 func buildItemStatsGraphQLQuery(extIds []string, expandOptions *ExpandOptions) string {
 	var query strings.Builder
 	query.Grow(1000)
@@ -1904,53 +1885,61 @@ func buildItemStatsGraphQLQuery(extIds []string, expandOptions *ExpandOptions) s
 	query.WriteString(fmt.Sprintf("query_name:\"%s\"", queryName))
 
 	// Add time range if provided
+	// StatsGW expects interval_start_ms/interval_end_ms in MICROSECONDS (despite the _ms suffix)
+	// ExpandOptions stores StartTime/EndTime in milliseconds, so multiply by 1000
 	if expandOptions != nil {
 		if expandOptions.StartTime != nil {
-			query.WriteString(fmt.Sprintf(",interval_start_ms:%d", *expandOptions.StartTime))
+			query.WriteString(fmt.Sprintf(",interval_start_ms:%d", *expandOptions.StartTime*1000))
 		}
 		if expandOptions.EndTime != nil {
-			query.WriteString(fmt.Sprintf(",interval_end_ms:%d", *expandOptions.EndTime))
+			query.WriteString(fmt.Sprintf(",interval_end_ms:%d", *expandOptions.EndTime*1000))
 		}
 		if expandOptions.SamplingInterval != nil {
 			query.WriteString(fmt.Sprintf(",downsampling_interval_secs:%d", *expandOptions.SamplingInterval))
 		}
 	}
 
-	// Add filter for item_ext_id IN (extIds)
-	// Limit to first 50 extIds to avoid query size issues
-	maxExtIds := 50
-	if len(extIds) > 0 {
-		extIdsToUse := extIds
-		if len(extIds) > maxExtIds {
-			log.Warnf("⚠️  [buildItemStatsGraphQLQuery] Limiting filter to first %d extIds (requested %d) to avoid query size issues", maxExtIds, len(extIds))
-			extIdsToUse = extIds[:maxExtIds]
-		}
-
-		// Build OData filter: item_ext_id eq 'extId1' or item_ext_id eq 'extId2' ...
-		filterParts := make([]string, 0, len(extIdsToUse))
-		for _, extId := range extIdsToUse {
-			filterParts = append(filterParts, fmt.Sprintf("item_ext_id eq '%s'", extId))
-		}
-		filterCriteria := strings.Join(filterParts, " or ")
-		query.WriteString(fmt.Sprintf(",odata_filter_criteria:\"%s\"", filterCriteria))
-		log.Infof("🔍 [buildItemStatsGraphQLQuery] Added filter for %d item extIds", len(extIdsToUse))
-	}
+	// Do NOT add filter_criteria - StatsGW direct query on item_stats returns null when filter is present.
+	// Fetch all item_stats and filter client-side by extId.
+	log.Infof("🔍 [buildItemStatsGraphQLQuery] No filter (fetch all, filter client-side)")
 
 	query.WriteString("})")
 
-	// Build select fields
+	// Build select fields - respect $select from expand when present
 	query.WriteString("{")
 
-	// Add time-series metrics with timeseries:true
-	// Note: GraphQL may require sampling parameter for timeseries queries
-	// Try with sampling:LAST first (returns latest values)
-	query.WriteString("age(sampling:LAST,timeseries:true)")
-	query.WriteString(",heart_rate(sampling:LAST,timeseries:true)")
-	query.WriteString(",food_intake(sampling:LAST,timeseries:true)")
+	sampling := "LAST"
+	if expandOptions != nil && expandOptions.StatType != nil {
+		sampling = *expandOptions.StatType
+	}
 
-	// Add attributes
+	// Map OData property names to GraphQL field names
+	odataToGraphQL := map[string]string{
+		"age": "age", "heartRate": "heart_rate", "heart_rate": "heart_rate",
+		"foodIntake": "food_intake", "food_intake": "food_intake",
+	}
+	allMetrics := []string{"age", "heart_rate", "food_intake"}
+
+	var metricsToSelect []string
+	if expandOptions != nil && expandOptions.Select != nil && len(expandOptions.Select.Fields) > 0 {
+		for _, f := range expandOptions.Select.Fields {
+			if gql, ok := odataToGraphQL[f]; ok {
+				metricsToSelect = append(metricsToSelect, gql)
+			}
+		}
+	}
+	if len(metricsToSelect) == 0 {
+		metricsToSelect = allMetrics
+	}
+
+	for i, metric := range metricsToSelect {
+		if i > 0 {
+			query.WriteString(",")
+		}
+		query.WriteString(fmt.Sprintf("%s(sampling:%s,timeseries:true)", metric, sampling))
+	}
+	// item_ext_id and _entity_id_ required for mapping results back to parent items
 	query.WriteString(",item_ext_id")
-	query.WriteString(",stats_ext_id")
 	query.WriteString(",_entity_id_")
 
 	query.WriteString("}}")
@@ -2047,12 +2036,12 @@ type ItemStatsGraphQLDto struct {
 }
 
 // ItemStatsGraphQLItemDto represents a single item_stats entity in GraphQL response
+// Used by the manual/fallback query builder (not the OData library path)
 type ItemStatsGraphQLItemDto struct {
 	Age        []ItemStatsTimeValuePair `json:"age"`
 	HeartRate  []ItemStatsTimeValuePair `json:"heart_rate"`
 	FoodIntake []ItemStatsTimeValuePair `json:"food_intake"`
 	ItemExtId  []string                 `json:"item_ext_id"`
-	StatsExtId []string                 `json:"stats_ext_id"`
 	EntityId   []string                 `json:"_entity_id_"`
 }
 
@@ -2114,8 +2103,8 @@ func (r *ItemRepositoryImpl) parseItemStatsGraphQLResponse(graphqlData string, e
 	// Debug: Log structure of first entity if available
 	if len(graphqlResp.ItemStats) > 0 {
 		first := graphqlResp.ItemStats[0]
-		log.Infof("🔍 [parseItemStatsGraphQLResponse] First entity: item_ext_id=%v, stats_ext_id=%v, age=%d pairs, heart_rate=%d pairs, food_intake=%d pairs",
-			first.ItemExtId, first.StatsExtId, len(first.Age), len(first.HeartRate), len(first.FoodIntake))
+		log.Infof("🔍 [parseItemStatsGraphQLResponse] First entity: age=%d pairs, heart_rate=%d pairs, food_intake=%d pairs, entity_id=%v",
+			len(first.Age), len(first.HeartRate), len(first.FoodIntake), first.EntityId)
 	}
 
 	// Create a set of extIds for fast lookup
@@ -2165,12 +2154,6 @@ func (r *ItemRepositoryImpl) parseItemStatsGraphQLResponse(graphqlData string, e
 		}
 
 		stat := &statsPb.ItemStats{}
-
-		// Extract stats_ext_id
-		if len(itemStatsDto.StatsExtId) > 0 {
-			statsExtId := itemStatsDto.StatsExtId[0]
-			stat.StatsExtId = &statsExtId
-		}
 
 		// Convert age time-series array
 		if len(itemStatsDto.Age) > 0 {

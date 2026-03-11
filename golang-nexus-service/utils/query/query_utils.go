@@ -25,7 +25,7 @@ func getKeys(values url.Values) []string {
 func ExtractQueryParamsFromContext(ctx context.Context) *models.QueryParams {
 	queryParams := &models.QueryParams{
 		Page:  0,
-		Limit: 50, // Default limit
+		Limit: 0, // No default; pagination only when $limit is explicitly provided
 	}
 
 	// Get the original path from context
