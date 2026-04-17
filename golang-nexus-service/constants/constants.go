@@ -2,20 +2,13 @@ package constants
 
 // Error codes for Nexus API
 const (
-	// OData parsing errors (50000-50099)
-	ErrorCodeODataParsingError     = 50019 // Failed to parse OData query parameters
-	ErrorCodeODataPropertyNotFound = 50020 // Unknown property in OData query
-	ErrorCodeODataInvalidSyntax    = 50021 // Invalid OData query syntax
-	ErrorCodeODataEvaluationError  = 50022 // Failed to evaluate OData query
-
-	// Internal errors (50100-50199)
-	ErrorCodeInternalError = 50100 // Internal server error
+	ErrorCodeODataParsingError = 50019
+	ErrorCodeInternalError     = 50100
 )
 
-// Error namespace and prefix for AppMessage
+// AppMessage constants used when building gRPC error responses.
 const (
-	EnglishLocale    = "en-US"
-	NexusNamespace   = "nexus"
+	EnglishLocale    = "en_US"
 	NexusErrorPrefix = "NEXUS"
 )
 

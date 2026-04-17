@@ -44,7 +44,7 @@ run-local: build-local
 	$(info Running golang-nexus-server locally)
 	$(info ===================================)
 	$(info )
-	./golang-nexus-server-local -port 9090
+	./golang-nexus-server-local -port 9095
 
 test:
 	$(info Running tests)

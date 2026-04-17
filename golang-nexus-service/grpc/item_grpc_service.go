@@ -83,8 +83,8 @@ func (s *ItemGrpcService) ListItems(ctx context.Context, req *pb.ListItemsArg) (
 		if item.ItemStats != nil {
 			itemStatsCount++
 			if i < 3 { // Log first 3 items with itemStats for debugging
-				log.Infof("🔍 [gRPC DEBUG] Item[%d] extId=%s has itemStats: age=%v, heartRate=%v, foodIntake=%v, timestamp=%v, speed=%v",
-					i, item.GetExtId(), item.ItemStats.GetAge(), item.ItemStats.GetHeartRate(), item.ItemStats.GetFoodIntake(), item.ItemStats.GetTimestamp(), item.ItemStats.GetSpeed())
+			log.Infof("🔍 [gRPC DEBUG] Item[%d] extId=%s has itemStats: age=%v, heartRate=%v, foodIntake=%v",
+				i, item.GetExtId(), item.ItemStats.GetAge(), item.ItemStats.GetHeartRate(), item.ItemStats.GetFoodIntake())
 			}
 		}
 

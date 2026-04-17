@@ -67,66 +67,31 @@ func NewNexusErrorWithMessage(errMsg string, errCode int, argMap map[string]stri
 	}
 }
 
-// GetODataParsingError creates an error for OData parsing failures
-// Matches categories API error message format exactly:
-// "Failed to list items as an error occurred while parsing the URI parameters. Check the provided query parameters."
-func GetODataParsingError(operation string, queryParam string) *NexusError {
+// GetODataParsingError creates an error for OData parsing failures.
+// Unlike the categories API which returns a generic message, this
+// includes the specific parser error detail so clients can fix their
+// query without guessing.
+func GetODataParsingError(detail string) *NexusError {
 	argMap := map[string]string{
-		"operation":  operation,
-		"queryParam": queryParam,
+		"detail": detail,
 	}
-	// Use exact message format from categories API
-	message := fmt.Sprintf("Failed to list %s as an error occurred while parsing the URI parameters. Check the provided query parameters.", operation)
 	return NewNexusErrorWithMessage(
-		message,
+		fmt.Sprintf(
+			"Failed to list items as an error occurred while "+
+				"parsing the URI parameters. %s", detail),
 		constants.ErrorCodeODataParsingError,
 		argMap,
 	)
 }
 
-// GetODataPropertyNotFoundError creates an error for unknown property in OData query
-func GetODataPropertyNotFoundError(propertyName string) *NexusError {
-	argMap := map[string]string{
-		"property": propertyName,
-	}
-	return NewNexusErrorWithMessage(
-		fmt.Sprintf("Unknown property '%s' in OData query. Please check field names (itemId, itemName, itemType, extId).", propertyName),
-		constants.ErrorCodeODataPropertyNotFound,
-		argMap,
-	)
-}
-
-// GetODataInvalidSyntaxError creates an error for invalid OData syntax
-func GetODataInvalidSyntaxError(queryParam string) *NexusError {
-	argMap := map[string]string{
-		"queryParam": queryParam,
-	}
-	return NewNexusErrorWithMessage(
-		fmt.Sprintf("Invalid OData query syntax in '%s'. Please check your $filter or $orderby expression.", queryParam),
-		constants.ErrorCodeODataInvalidSyntax,
-		argMap,
-	)
-}
-
-// GetODataEvaluationError creates an error for OData evaluation failures
-func GetODataEvaluationError(operation string) *NexusError {
-	argMap := map[string]string{
-		"operation": operation,
-	}
-	return NewNexusErrorWithMessage(
-		fmt.Sprintf("Failed to evaluate OData query for %s. Please try a simpler query.", operation),
-		constants.ErrorCodeODataEvaluationError,
-		argMap,
-	)
-}
-
-// GetInternalError creates an internal server error
+// GetInternalError creates an internal server error.
 func GetInternalError(operation string) *NexusError {
 	argMap := map[string]string{
 		"operation": operation,
 	}
 	return NewNexusErrorWithMessage(
-		fmt.Sprintf("Internal error occurred while processing %s.", operation),
+		fmt.Sprintf(
+			"Internal error occurred while processing %s.", operation),
 		constants.ErrorCodeInternalError,
 		argMap,
 	)
