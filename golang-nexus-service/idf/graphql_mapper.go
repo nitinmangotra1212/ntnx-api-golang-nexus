@@ -253,13 +253,8 @@ func mapGraphqlItemFields(itemDto *ItemGraphqlDto, expansionKey string) *pb.Item
 		item.ItemName = &itemDto.ItemName[0]
 	}
 	if len(itemDto.ItemType) > 0 {
-		if enumVal, ok := pb.ItemTypeMessage_ItemType_value[itemDto.ItemType[0]]; ok {
-			protoVal := pb.ItemTypeMessage_ItemType(enumVal)
-			item.ItemType = &protoVal
-		} else if intVal, err := parseInt64(itemDto.ItemType[0]); err == nil {
-			protoVal := resolveItemTypeProto(intVal)
-			item.ItemType = &protoVal
-		}
+		protoVal := resolveItemTypeProtoFromStr(itemDto.ItemType[0])
+		item.ItemType = &protoVal
 	}
 	if len(itemDto.Description) > 0 {
 		item.Description = &itemDto.Description[0]
@@ -644,17 +639,11 @@ func buildGroupKeyFromGraphql(value interface{}, groupByColumn string) interface
 
 	switch groupByColumn {
 	case "item_type":
-		if numVal, ok := value.(float64); ok {
-			idfVal := int64(numVal)
-			label := resolveItemTypeLabel(idfVal)
-			return &pb.ItemGroup_StringGroup{StringGroup: &pb.StringWrapper{Value: proto.String(label)}}
-		}
 		if strVal, ok := value.(string); ok {
-			if idfVal, err := parseInt64(strVal); err == nil {
-				label := resolveItemTypeLabel(idfVal)
-				return &pb.ItemGroup_StringGroup{StringGroup: &pb.StringWrapper{Value: proto.String(label)}}
-			}
 			return &pb.ItemGroup_StringGroup{StringGroup: &pb.StringWrapper{Value: proto.String(strVal)}}
+		}
+		if numVal, ok := value.(float64); ok {
+			return &pb.ItemGroup_StringGroup{StringGroup: &pb.StringWrapper{Value: proto.String(fmt.Sprintf("%.0f", numVal))}}
 		}
 	case "is_active":
 		if bVal, ok := value.(bool); ok {

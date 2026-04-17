@@ -52,51 +52,37 @@ const (
 )
 
 // ItemType enum mappings:
-//   IDF stores int64 (1,2,3,4) via x-property-mapping
-//   Proto enum uses indexes (2001,2002,2003,2004) via x-codegen-hint
+//   IDF stores string values ("TYPE1","TYPE2","$UNKNOWN","$REDACTED") as str_value.
+//   Proto enum uses indexes (2001,2002,2003,2004) via x-codegen-hint.
 var (
-	idfToProtoItemType = map[int64]pb.ItemTypeMessage_ItemType{
-		1: pb.ItemTypeMessage_TYPE1,
-		2: pb.ItemTypeMessage_TYPE2,
-		3: pb.ItemTypeMessage_UNKNOWN,
-		4: pb.ItemTypeMessage_REDACTED,
+	idfStrToProtoItemType = map[string]pb.ItemTypeMessage_ItemType{
+		"TYPE1":     pb.ItemTypeMessage_TYPE1,
+		"TYPE2":     pb.ItemTypeMessage_TYPE2,
+		"$UNKNOWN":  pb.ItemTypeMessage_UNKNOWN,
+		"$REDACTED": pb.ItemTypeMessage_REDACTED,
 	}
-	protoToIdfItemType = map[pb.ItemTypeMessage_ItemType]int64{
-		pb.ItemTypeMessage_TYPE1:    1,
-		pb.ItemTypeMessage_TYPE2:    2,
-		pb.ItemTypeMessage_UNKNOWN:  3,
-		pb.ItemTypeMessage_REDACTED: 4,
-	}
-	itemTypeEnumToString = map[int64]string{
-		1: "TYPE1",
-		2: "TYPE2",
-		3: "$UNKNOWN",
-		4: "$REDACTED",
+	protoToIdfItemTypeStr = map[pb.ItemTypeMessage_ItemType]string{
+		pb.ItemTypeMessage_TYPE1:    "TYPE1",
+		pb.ItemTypeMessage_TYPE2:    "TYPE2",
+		pb.ItemTypeMessage_UNKNOWN:  "$UNKNOWN",
+		pb.ItemTypeMessage_REDACTED: "$REDACTED",
 	}
 )
 
-// resolveItemTypeProto converts an IDF int64 value to the protobuf enum value.
-func resolveItemTypeProto(idfValue int64) pb.ItemTypeMessage_ItemType {
-	if enumVal, ok := idfToProtoItemType[idfValue]; ok {
+// resolveItemTypeProtoFromStr converts an IDF string value to the protobuf enum value.
+func resolveItemTypeProtoFromStr(idfValue string) pb.ItemTypeMessage_ItemType {
+	if enumVal, ok := idfStrToProtoItemType[idfValue]; ok {
 		return enumVal
 	}
 	return pb.ItemTypeMessage_UNKNOWN
 }
 
-// resolveItemTypeLabel converts an IDF int64 value to the string enum label (for group keys).
-func resolveItemTypeLabel(intValue int64) string {
-	if label, ok := itemTypeEnumToString[intValue]; ok {
-		return label
-	}
-	return "$UNKNOWN"
-}
-
-// resolveItemTypeIdfValue converts a proto enum value to the IDF int64 storage value.
-func resolveItemTypeIdfValue(enumVal pb.ItemTypeMessage_ItemType) int64 {
-	if val, ok := protoToIdfItemType[enumVal]; ok {
+// resolveItemTypeIdfStr converts a proto enum value to the IDF string storage value.
+func resolveItemTypeIdfStr(enumVal pb.ItemTypeMessage_ItemType) string {
+	if val, ok := protoToIdfItemTypeStr[enumVal]; ok {
 		return val
 	}
-	return protoToIdfItemType[pb.ItemTypeMessage_UNKNOWN]
+	return "$UNKNOWN"
 }
 
 func NewItemRepository() db.ItemRepository {
@@ -133,12 +119,11 @@ func (r *ItemRepositoryImpl) CreateItem(itemEntity *models.ItemEntity) error {
 		AddAttribute(&attributeDataArgList, itemNameAttr, *itemEntity.Item.ItemName)
 	}
 	if itemEntity.Item.ItemType != nil {
-		AddAttribute(&attributeDataArgList, itemTypeAttr, resolveItemTypeIdfValue(*itemEntity.Item.ItemType))
+		AddAttribute(&attributeDataArgList, itemTypeAttr, resolveItemTypeIdfStr(*itemEntity.Item.ItemType))
 	}
 	if itemEntity.Item.Description != nil {
 		AddAttribute(&attributeDataArgList, descriptionAttr, *itemEntity.Item.Description)
 	}
-	// New fields for GroupBy/Aggregations
 	if itemEntity.Item.Quantity != nil {
 		AddAttribute(&attributeDataArgList, quantityAttr, *itemEntity.Item.Quantity)
 	}
@@ -154,7 +139,6 @@ func (r *ItemRepositoryImpl) CreateItem(itemEntity *models.ItemEntity) error {
 	if itemEntity.Item.Status != nil {
 		AddAttribute(&attributeDataArgList, statusAttr, *itemEntity.Item.Status)
 	}
-	// List attributes
 	if itemEntity.Item.Int64List != nil && len(itemEntity.Item.Int64List.Value) > 0 {
 		AddAttribute(&attributeDataArgList, int64ListAttr, itemEntity.Item.Int64List.Value)
 	}
@@ -167,7 +151,6 @@ func (r *ItemRepositoryImpl) CreateItem(itemEntity *models.ItemEntity) error {
 		AttributeDataArgList: attributeDataArgList,
 	}
 
-	// Call the IDF client to create the entity
 	_, err := idfClient.UpdateEntityRet(updateArg)
 	if err != nil {
 		log.Errorf("Failed to create item: %v", err)
@@ -555,7 +538,7 @@ type groupFieldInfo struct {
 
 // oDataToIdfGroupField maps OData camelCase property names to their IDF attribute and type info.
 var oDataToIdfGroupField = map[string]groupFieldInfo{
-	"itemType": {itemTypeAttr, "int64", true},
+	"itemType": {itemTypeAttr, "string", false},
 	"itemName": {itemNameAttr, "string", false},
 	"status":   {statusAttr, "string", false},
 	"itemId":   {itemIdAttr, "int32", false},
@@ -565,15 +548,10 @@ var oDataToIdfGroupField = map[string]groupFieldInfo{
 	"isActive": {isActiveAttr, "boolean", false},
 }
 
-// resolveEnumGroupLabel converts a raw int64 value to a display label for enum-type groupBy columns.
-// Returns the label and true if the column is an enum column, or empty string and false otherwise.
+// resolveEnumGroupLabel is kept for potential future enum columns stored as int64.
+// Currently unused since itemType is stored as string in IDF.
 func resolveEnumGroupLabel(idfAttr string, intValue int64) (string, bool) {
-	switch idfAttr {
-	case itemTypeAttr:
-		return resolveItemTypeLabel(intValue), true
-	default:
-		return "", false
-	}
+	return "", false
 }
 
 // extractGroupKey extracts the group key from an entity based on the $apply parameter.
@@ -979,12 +957,12 @@ func (r *ItemRepositoryImpl) mapIdfAttributeToItem(entity *insights_interface.En
 				log.Debugf("  Mapped item_name: %s", val)
 			}
 
-		case itemTypeAttr: // "item_type" (IDF int64 enum) → ItemType (protobuf enum)
+		case itemTypeAttr: // "item_type" (IDF string) → ItemType (protobuf enum)
 			if attr.GetValue() != nil {
-				idfVal := attr.GetValue().GetInt64Value()
-				enumVal := resolveItemTypeProto(idfVal)
+				idfVal := attr.GetValue().GetStrValue()
+				enumVal := resolveItemTypeProtoFromStr(idfVal)
 				item.ItemType = &enumVal
-				log.Debugf("  Mapped item_type: IDF %d -> proto %s (%d)", idfVal, enumVal.String(), enumVal)
+				log.Debugf("  Mapped item_type: IDF '%s' -> proto %s (%d)", idfVal, enumVal.String(), enumVal)
 			}
 
 		case descriptionAttr: // "description" (IDF) → Description (protobuf)
@@ -1127,12 +1105,11 @@ func (r *ItemRepositoryImpl) UpdateItem(extId string, itemEntity *models.ItemEnt
 		AddAttribute(&attributeDataArgList, itemNameAttr, *itemEntity.Item.ItemName)
 	}
 	if itemEntity.Item.ItemType != nil {
-		AddAttribute(&attributeDataArgList, itemTypeAttr, resolveItemTypeIdfValue(*itemEntity.Item.ItemType))
+		AddAttribute(&attributeDataArgList, itemTypeAttr, resolveItemTypeIdfStr(*itemEntity.Item.ItemType))
 	}
 	if itemEntity.Item.Description != nil {
 		AddAttribute(&attributeDataArgList, descriptionAttr, *itemEntity.Item.Description)
 	}
-	// New fields for GroupBy/Aggregations
 	if itemEntity.Item.Quantity != nil {
 		AddAttribute(&attributeDataArgList, quantityAttr, *itemEntity.Item.Quantity)
 	}
@@ -1148,7 +1125,6 @@ func (r *ItemRepositoryImpl) UpdateItem(extId string, itemEntity *models.ItemEnt
 	if itemEntity.Item.Status != nil {
 		AddAttribute(&attributeDataArgList, statusAttr, *itemEntity.Item.Status)
 	}
-	// List attributes
 	if itemEntity.Item.Int64List != nil && len(itemEntity.Item.Int64List.Value) > 0 {
 		AddAttribute(&attributeDataArgList, int64ListAttr, itemEntity.Item.Int64List.Value)
 	}

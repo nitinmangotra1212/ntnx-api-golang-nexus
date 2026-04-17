@@ -281,19 +281,22 @@ func constructIDFQuery(queryParams *models.QueryParams, idfQuery *insights_inter
 			*idfQuery.GetGroupBy().GetGroupLimit().Offset)
 	}
 
-	// ALWAYS set RawLimit — it controls per-group entity count.
-	// Even for $apply=groupby queries, $page/$limit apply to entities within each group,
-	// matching the categories service pattern (addLimitAndPageParam is called unconditionally).
-	offset := page * limit
-	limit64 := int64(limit)
-	offset64 := int64(offset)
+	// Set RawLimit — it controls per-group entity count.
+	// When $limit is not specified (limit==0), omit RawLimit entirely so IDF returns
+	// all entities (its default behavior). Setting RawLimit.Limit=0 tells IDF to
+	// return zero entities, which is not the intent when the caller omits $limit.
+	if limit > 0 {
+		offset := page * limit
+		limit64 := int64(limit)
+		offset64 := int64(offset)
 
-	if query.GroupBy.RawLimit == nil {
-		query.GroupBy.RawLimit = &insights_interface.QueryLimit{}
+		if query.GroupBy.RawLimit == nil {
+			query.GroupBy.RawLimit = &insights_interface.QueryLimit{}
+		}
+
+		query.GroupBy.RawLimit.Limit = &limit64
+		query.GroupBy.RawLimit.Offset = &offset64
 	}
-
-	query.GroupBy.RawLimit.Limit = &limit64
-	query.GroupBy.RawLimit.Offset = &offset64
 
 	// Add filter from OData $filter
 	query.WhereClause = idfQuery.GetWhereClause()

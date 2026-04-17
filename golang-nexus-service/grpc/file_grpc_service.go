@@ -22,11 +22,11 @@ import (
 )
 
 const (
-	BYTE_ARRAY_SIZE = 4 * 1024 * 1024 // 4MB chunks
-	ONE_GB_IN_BYTES = 1 * 1024 * 1024 * 1024 // 1GB limit
-	FILE_IDENTIFIER = "File-Identifier"
-	CONTENT_LENGTH  = "Content-Length"
-	CONTENT_DISPOSITION = "Content-Disposition"
+	BYTE_ARRAY_SIZE     = 4 * 1024 * 1024         // 4MB chunks
+	ONE_GB_IN_BYTES     = 1 * 1024 * 1024 * 1024   // 1GB limit
+	FILE_IDENTIFIER     = "File-Identifier"
+	CONTENT_LENGTH      = "File-Content-Length"      // Custom name; HTTP/2 reserves "Content-Length"
+	CONTENT_DISPOSITION = "File-Content-Disposition"  // Custom name to survive gRPC HTTP/2 transport
 )
 
 // FileGrpcService implements the gRPC FileService
