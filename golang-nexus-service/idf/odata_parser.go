@@ -37,7 +37,7 @@ func extractGroupByColumn(applyParam string) string {
 
 	propToCol := map[string]string{
 		"itemId": itemIdAttr, "itemName": itemNameAttr, "itemType": itemTypeAttr,
-		"description": descriptionAttr, "extId": extIdAttr, "quantity": quantityAttr,
+		"extId": extIdAttr, "quantity": quantityAttr,
 		"price": priceAttr, "isActive": isActiveAttr, "priority": priorityAttr,
 		"status": statusAttr, "int64List": int64ListAttr,
 	}
@@ -88,7 +88,7 @@ func GenerateListQuery(queryParams *models.QueryParams, resourcePath string,
 
 	if queryParams.Apply != "" {
 		queryParam.SetApply(queryParams.Apply)
-		log.Debugf("Set $apply parameter: %s", queryParams.Apply)
+		log.Infof("🔍 [OData] Set $apply parameter: %s", queryParams.Apply)
 	}
 
 	// Parse OData query parameters
@@ -105,9 +105,11 @@ func GenerateListQuery(queryParams *models.QueryParams, resourcePath string,
 		Module:    module, // "config" or "stats" (not entityName)
 		Resource:  resourcePath,
 	}
+	log.Infof("🔍 [OData] Calling ParserWithQueryParam: Namespace=%s, Module=%s, Resource=%s",
+		parseParam.Namespace, parseParam.Module, parseParam.Resource)
 	uriInfo, parseErr := odataParser.ParserWithQueryParam(queryParam, parseParam)
 	if parseErr != nil {
-		log.Errorf("Failed to Parse OData expression: %v", parseErr)
+		log.Errorf("❌ [OData] Failed to Parse OData expression: %v", parseErr)
 		// Provide helpful error message for common syntax mistakes
 		if strings.Contains(parseErr.Error(), "invalid groupby format") {
 			return nil, fmt.Errorf("invalid OData query: %w. Hint: Use 'groupby((propertyName))' with double parentheses. For filtering, use '$filter=property eq value&$apply=groupby((property))'", parseErr)
@@ -369,12 +371,11 @@ func createItemEntityBinding() *edm.EdmEntityBinding {
 	sortableProperties["price"] = true
 	sortableProperties["priority"] = true
 
-	// Groupable properties (can be used in $apply=groupby) - ALL fields are groupable
+	// Groupable properties (can be used in $apply=groupby)
 	groupableProperties := make(map[string]bool)
 	groupableProperties["itemId"] = true
 	groupableProperties["itemName"] = true
 	groupableProperties["itemType"] = true
-	groupableProperties["description"] = true
 	groupableProperties["extId"] = true
 	groupableProperties["quantity"] = true
 	groupableProperties["price"] = true
@@ -419,15 +420,16 @@ func createItemEntityBinding() *edm.EdmEntityBinding {
 	itemTypeProp.IsGroupable = groupableProperties["itemType"]
 	properties = append(properties, itemTypeProp)
 
-	// description property
+	// description property — NOT groupable
 	descProp := new(edm.EdmProperty)
 	descProp.Name = "description"
 	descProp.IsCollection = false
 	descProp.Type = string(edm.EdmString)
 	descProp.MappedName = binding.PropertyMappings["description"]
-	descProp.IsFilterable = false // description is not filterable
-	descProp.IsSortable = false   // description is not sortable
-	descProp.IsGroupable = groupableProperties["description"]
+	descProp.IsFilterable = false
+	descProp.IsSortable = false
+	descProp.IsGroupable = false
+	log.Infof("🔍 [EDM] description property: IsGroupable=%v", descProp.IsGroupable)
 	properties = append(properties, descProp)
 
 	// extId property

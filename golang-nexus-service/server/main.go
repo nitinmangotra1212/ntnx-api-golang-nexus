@@ -22,7 +22,7 @@ import (
 )
 
 var (
-	port     = flag.Int("port", 9090, "The server port")
+	port     = flag.Int("port", 9095, "The server port")
 	logLevel = flag.String("log-level", "info", "Log level: debug, info, warn, error (default: info)")
 	idfHost  = flag.String("idf-host", "127.0.0.1", "IDF service host")
 	idfPort  = flag.Int("idf-port", 2027, "IDF service port")

@@ -295,7 +295,7 @@ func (r *ItemRepositoryImpl) ListItems(queryParams *models.QueryParams) ([]*pb.I
 // When $apply=groupby(...) is used, the response structure is different (ItemGroup)
 // Returns ItemGroup objects with group keys and aggregated data
 func (r *ItemRepositoryImpl) ListItemsWithGroupBy(queryParams *models.QueryParams) ([]*pb.ItemGroup, int64, error) {
-	log.Infof("Executing GroupBy query with $apply: %s", queryParams.Apply)
+	log.Infof("🔀 [GroupBy-v2] Executing GroupBy query with $apply: %s", queryParams.Apply)
 
 	// When $expand is present, use GraphQL path (like categories' fetchAndMakeGroupsResponseGraphql).
 	// IdfGraphqlQueryEvaluator generates a single GraphQL query with groupby + JOINs + nested options.
@@ -555,15 +555,14 @@ type groupFieldInfo struct {
 
 // oDataToIdfGroupField maps OData camelCase property names to their IDF attribute and type info.
 var oDataToIdfGroupField = map[string]groupFieldInfo{
-	"itemType":    {itemTypeAttr, "int64", true},
-	"itemName":    {itemNameAttr, "string", false},
-	"description": {descriptionAttr, "string", false},
-	"status":      {statusAttr, "string", false},
-	"itemId":      {itemIdAttr, "int32", false},
-	"quantity":    {quantityAttr, "int64", false},
-	"priority":    {priorityAttr, "int32", false},
-	"price":       {priceAttr, "double", false},
-	"isActive":    {isActiveAttr, "boolean", false},
+	"itemType": {itemTypeAttr, "int64", true},
+	"itemName": {itemNameAttr, "string", false},
+	"status":   {statusAttr, "string", false},
+	"itemId":   {itemIdAttr, "int32", false},
+	"quantity": {quantityAttr, "int64", false},
+	"priority": {priorityAttr, "int32", false},
+	"price":    {priceAttr, "double", false},
+	"isActive": {isActiveAttr, "boolean", false},
 }
 
 // resolveEnumGroupLabel converts a raw int64 value to a display label for enum-type groupBy columns.
